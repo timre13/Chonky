@@ -8,7 +8,7 @@ chonky: main.c
 
 test.img:
 	rm -f test.img
-	mkfs.fat -v -F32 -n "TEST FS" -C test.img 34816
+	mkfs.fat -v -F32 -n "TEST FS" -C test.img 1048576
 
 test: chonky test.img
 	./chonky test.img

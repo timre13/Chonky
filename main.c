@@ -83,21 +83,27 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        printf("Usage: %s <file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <file>\n", argv[0]);
         return 1;
     }
 
     FILE* file = fopen(argv[1], "r");
     if (!file)
     {
-        printf("Failed to open file: %s: %s\n", argv[1], strerror(errno));
+        fprintf(stderr, "Failed to open file: %s: %s\n", argv[1], strerror(errno));
         return 1;
     }
 
+    printf("Reading file system...\n");
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
     fseek(file, 0, SEEK_SET);
     unsigned char* buffer = malloc(fileSize);
+    if (!buffer)
+    {
+        fprintf(stderr, "Failed to allocate memory for file buffer, needed: %li bytes\n", fileSize);
+        return 1;
+    }
     printf("Read %lu bytes\n",
             fread(buffer, 1, fileSize, file));
 
