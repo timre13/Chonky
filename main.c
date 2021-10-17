@@ -51,16 +51,29 @@ typedef struct
 #define EBPB_LABEL_LEN 11
 #define EBPB_SYS_ID_LEN 8
 
+/* FAT32 volumes use (rarely) an extended EBPB */
+/* TODO: Detect somehow if the volume uses the FAT32 variant */
+#define USE_FAT32_EBPB 0
+
 /* Extended BIOS Parameter Block */
 typedef struct
 {
+#if USE_FAT32_EBPB
+    uint32_t    sectorsPerFat;
+    uint16_t    flags;
+    uint16_t    fatVersion;
+    uint32_t    rootDirClusterNum;
+    uint16_t    fsInfoSectorNum;
+    uint16_t    backupSectorNum;
+    uint8_t     _reserved[12];
+#endif
     uint8_t     driveNum;
     uint8_t     ntFlags;
     uint8_t     signature;
     uint32_t    serialNum;
     uint8_t     label[EBPB_LABEL_LEN];
     uint8_t     systemId[EBPB_SYS_ID_LEN];
-    /* 448 bytes of boot code */
+    /* Boot code */
     /* MBR signature (0xAA55) */
 } __attribute__((packed)) EBPB;
 
@@ -115,6 +128,14 @@ int main(int argc, char** argv)
 
     EBPB ebpb;
     memcpy(&ebpb, buffer+sizeof(bpb)+0x1c, sizeof(ebpb));
+#if USE_FAT32_EBPB
+    printf("Sectors/FAT:            %i\n", ebpb.sectorsPerFat);
+    printf("Flags:                  0x%x\n", ebpb.flags);
+    printf("FAT version:            0x%x\n", ebpb.fatVersion);
+    printf("Root dir cluster:       %i\n", ebpb.rootDirClusterNum);
+    printf("FSInfo sector:          %i\n", ebpb.fsInfoSectorNum);
+    printf("Backup boot sector:     %i\n", ebpb.backupSectorNum);
+#endif
     printf("Drive number:           %i\n", ebpb.driveNum);
     printf("NT Flags:               0x%x\n", ebpb.ntFlags);
     printf("Signature:              0x%i\n", ebpb.signature);
