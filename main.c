@@ -11,6 +11,21 @@
 
 //------------------------------------------------------------------------------
 
+#define PACKED __attribute__((packed))
+
+long limit(long val, long _limit)
+{
+    return val > _limit ? _limit : val;
+}
+
+typedef enum
+{
+    false,
+    true,
+} bool;
+
+typedef unsigned int uint;
+
 void printHex(unsigned char* buffer, int n)
 {
     for (int i=0; i < n; ++i)
@@ -28,23 +43,29 @@ void printHex(unsigned char* buffer, int n)
 #define BPB_OEM_LEN 8
 
 /* BIOS Parameter Block */
-typedef struct
+typedef struct PACKED
 {
-    uint8_t     _r1[3];
+    uint8_t     _reserved0[3];
     uint8_t     oemIdentifier[BPB_OEM_LEN];
     uint16_t    sectorSize;
     uint8_t     sectorsPerClusters;
     uint16_t    reservedSectorCount;
     uint8_t     fatCount;
     uint16_t    dirEntryCount;
-    uint16_t    sectorCount;
+    uint16_t    _sectorCount;
     uint8_t     mediaType;
-    uint16_t    sectorsPerFat;
+    uint16_t    _sectorsPerFat; // FAT12/FAT16 only, don't use
     uint16_t    sectorsPerTrack;
     uint16_t    headCount;
     uint32_t    hiddenSectCount;
-    uint32_t    largeSectCount;
-} __attribute__((packed)) BPB;
+    uint32_t    _largeSectCount;
+} BPB;
+
+uint32_t getSectorCount(const BPB* input)
+{
+    // If _sectorCount is 0, threre are more than 65535 sectors, so the number is stored in _largeSectCount
+    return input->_sectorCount == 0 ? input->_largeSectCount : input->_sectorCount;
+}
 
 //------------------------------------------------------------------------------
 
@@ -56,7 +77,7 @@ typedef struct
 #define USE_FAT32_EBPB 0
 
 /* Extended BIOS Parameter Block */
-typedef struct
+typedef struct PACKED
 {
 #if USE_FAT32_EBPB
     uint32_t    sectorsPerFat;
@@ -65,7 +86,7 @@ typedef struct
     uint32_t    rootDirClusterNum;
     uint16_t    fsInfoSectorNum;
     uint16_t    backupSectorNum;
-    uint8_t     _reserved[12];
+    uint8_t     _reserved0[12];
 #endif
     uint8_t     driveNum;
     uint8_t     ntFlags;
@@ -75,7 +96,124 @@ typedef struct
     uint8_t     systemId[EBPB_SYS_ID_LEN];
     /* Boot code */
     /* MBR signature (0xAA55) */
-} __attribute__((packed)) EBPB;
+} EBPB;
+
+//------------------------------------------------------------------------------
+
+typedef struct PACKED
+{
+    uint8_t     reserved: 4;
+    uint32_t    address: 28;
+} ClusterEntry;
+
+bool isBadCluster(const ClusterEntry* entry)
+{
+    return entry->address == 0x0FFFFFF7;
+}
+
+bool isLastCluster(const ClusterEntry* entry)
+{
+    return entry->address >= 0x0FFFFFF8;
+}
+
+//------------------------------------------------------------------------------
+
+#define DIRENTRY_FILENAME_LEN 11
+#define DIRENTRY_ATTR_FLAG_READONLY     0x01
+#define DIRENTRY_ATTR_FLAG_HIDDEN       0x02
+#define DIRENTRY_ATTR_FLAG_SYSTEM       0x04
+#define DIRENTRY_ATTR_FLAG_VOLUME_ID    0x08
+#define DIRENTRY_ATTR_FLAG_DIRECTORY    0x10
+#define DIRENTRY_ATTR_FLAG_ARCHIVE      0x20
+typedef struct PACKED
+{
+    uint8_t     fileName[DIRENTRY_FILENAME_LEN];
+    uint8_t     attributes;
+    uint8_t     ntReserved;
+    uint8_t     creationTimeTenthSec;
+    uint16_t    _creationTime;
+    uint16_t    _creationDate;
+    uint16_t    _accessDate;
+    uint16_t    _entryFirstClusterNum1;
+    uint16_t    _modTime;
+    uint16_t    _modDate;
+    uint16_t    _entryFirstClusterNum2;
+    uint32_t    fileSize;
+} DirEntry;
+
+bool isLongFileNameEntry(const DirEntry* entry)
+{
+    return entry->attributes ==
+        ( DIRENTRY_ATTR_FLAG_READONLY
+        | DIRENTRY_ATTR_FLAG_HIDDEN
+        | DIRENTRY_ATTR_FLAG_SYSTEM
+        | DIRENTRY_ATTR_FLAG_VOLUME_ID);
+}
+
+uint32_t getFirstClusterNumber(const DirEntry* input)
+{
+    return ((uint32_t)input->_entryFirstClusterNum1 << 16) | (uint32_t)input->_entryFirstClusterNum2;
+}
+
+//------------------------------------------------------------------------------
+
+typedef struct PACKED
+{
+    unsigned int hour;
+    unsigned int min;
+    unsigned int sec;
+} DirEntryTime;
+
+DirEntryTime toDirEntryTime(uint16_t input)
+{
+    DirEntryTime time = {
+        .hour = ((uint)input & (uint)0x1111100000000000) >> 11,
+        .min  = ((uint)input & (uint)0x0000011111100000) >> 5,
+        .sec  = ((uint)input & (uint)0x0000000000011111) * 2
+    };
+    return time;
+}
+
+const char* dirEntryTimeToStr(const DirEntryTime* input)
+{
+    char* buffer = malloc(9);
+    if (snprintf(buffer, 9, "%02i-%02i-%02i", input->hour, input->min, input->sec))
+    {
+        // If no space for time, fill the output with ?s
+        strcpy(buffer, "\?\?-\?\?-\?\?");
+    }
+    return buffer;
+}
+
+//------------------------------------------------------------------------------
+
+typedef struct PACKED
+{
+    int year;
+    int month;
+    int day;
+} DirEntryDate;
+
+DirEntryDate toDirEntryDate(uint16_t input)
+{
+    DirEntryDate date = {
+        .year  = (input & 0x1111111000000000) >> 9,
+        .month = (input & 0x0000000111100000) >> 5,
+        .day   = (input & 0x0000000000011111)
+    };
+    return date;
+}
+
+const char* dirEntryDateToStr(const DirEntryDate* input)
+{
+    char* buffer = malloc(9);
+    if (snprintf(buffer, 9, "%02i-%02i-%02i", input->year, input->month, input->day))
+    {
+        // If no space for date, fill the output with ?s
+        strcpy(buffer, "\?\?-\?\?-\?\?");
+    }
+    return buffer;
+}
 
 //------------------------------------------------------------------------------
 
@@ -94,67 +232,51 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    printf("Reading file system...\n");
     fseek(file, 0, SEEK_END);
-    long fileSize = ftell(file);
+    const long diskSize = ftell(file);
+    printf("Disk size is %li bytes = %fKb = %fMb = %fGb)\n",
+            diskSize, diskSize/1024.f, diskSize/1024.f/1024.f, diskSize/1024.f/1024.f/1024.f);
     fseek(file, 0, SEEK_SET);
-    unsigned char* buffer = malloc(fileSize);
-    if (!buffer)
-    {
-        fprintf(stderr, "Failed to allocate memory for file buffer, needed: %li bytes\n", fileSize);
-        return 1;
-    }
-    printf("Read %lu bytes\n",
-            fread(buffer, 1, fileSize, file));
-
-    for (int i=0; i < 45; ++i) printf("=");
-    printf(" MBR ");
-    for (int i=0; i < 45; ++i) printf("=");
-    printf("\n");
-    printHex(buffer, 1024);
-    for (int i=0; i < 95; ++i) printf("=");
-    printf("\n\n");
 
     BPB bpb;
-    memcpy(&bpb, buffer, sizeof(bpb));
+    fread(&bpb, sizeof(bpb), 1, file);
     printf("OEM:                    %.*s\n", BPB_OEM_LEN, bpb.oemIdentifier);
-    printf("Bytes/sector:           %i\n", bpb.sectorSize);
-    printf("Sectors/cluster:        %i\n", bpb.sectorsPerClusters);
-    printf("Reserved sectors:       %i\n", bpb.reservedSectorCount);
-    printf("Number of FATs:         %i\n", bpb.fatCount);
-    printf("Number of dir entries:  %i\n", bpb.dirEntryCount);
-    printf("Sectors:                %i\n", bpb.sectorCount);
+    printf("Bytes/sector:           %u\n", bpb.sectorSize);
+    printf("Sectors/cluster:        %u\n", bpb.sectorsPerClusters);
+    printf("Reserved sectors:       %u\n", bpb.reservedSectorCount);
+    printf("Number of FATs:         %u\n", bpb.fatCount);
+    printf("Number of dir entries:  %u\n", bpb.dirEntryCount);
     printf("Media type:             0x%x\n", bpb.mediaType);
-    printf("Sectors/FAT:            %i\n", bpb.sectorsPerFat);
-    printf("Sectors/track:          %i\n", bpb.sectorsPerTrack);
-    printf("Heads:                  %i\n", bpb.headCount);
-    printf("Hidden sectors:         %i\n", bpb.hiddenSectCount);
-    printf("Large sector count:     %i\n", bpb.largeSectCount);
+    printf("Sectors/track:          %u\n", bpb.sectorsPerTrack);
+    printf("Heads:                  %u\n", bpb.headCount);
+    printf("Hidden sectors:         %u\n", bpb.hiddenSectCount);
+    printf("Sector count:           %u\n", getSectorCount(&bpb));
     printf("\n");
 
     EBPB ebpb;
-    memcpy(&ebpb, buffer+sizeof(bpb)+0x1c, sizeof(ebpb));
+    fseek(file, sizeof(bpb)+0x1c, SEEK_SET);
+    fread(&ebpb, sizeof(ebpb), 1, file);
 #if USE_FAT32_EBPB
-    printf("Sectors/FAT:            %i\n", ebpb.sectorsPerFat);
+    printf("Sectors/FAT:            %u\n", ebpb.sectorsPerFat);
     printf("Flags:                  0x%x\n", ebpb.flags);
     printf("FAT version:            0x%x\n", ebpb.fatVersion);
-    printf("Root dir cluster:       %i\n", ebpb.rootDirClusterNum);
-    printf("FSInfo sector:          %i\n", ebpb.fsInfoSectorNum);
-    printf("Backup boot sector:     %i\n", ebpb.backupSectorNum);
+    printf("Root dir cluster:       %u\n", ebpb.rootDirClusterNum);
+    printf("FSInfo sector:          %u\n", ebpb.fsInfoSectorNum);
+    printf("Backup boot sector:     %u\n", ebpb.backupSectorNum);
 #endif
-    printf("Drive number:           %i\n", ebpb.driveNum);
+    printf("Drive number:           %u\n", ebpb.driveNum);
     printf("NT Flags:               0x%x\n", ebpb.ntFlags);
-    printf("Signature:              0x%i\n", ebpb.signature);
+    printf("Signature:              0x%u\n", ebpb.signature);
     printf("Serial number:          0x%x\n", ebpb.serialNum);
     printf("Label:                  %.*s\n", EBPB_LABEL_LEN, ebpb.label);
     printf("System ID:              %.*s\n", EBPB_SYS_ID_LEN, ebpb.systemId);
     printf("\n");
 
     uint16_t mbrSignature;
-    memcpy(&mbrSignature, buffer+510, 2);
+    fseek(file, 510, SEEK_SET);
+    fread(&mbrSignature, 2, 1, file);
     printf("MBR Signature:          0x%x (%s)\n", mbrSignature, (mbrSignature == 0xaa55 ? "OK" : "BAD"));
 
-    free(buffer);
     fclose(file);
     return 0;
 }
