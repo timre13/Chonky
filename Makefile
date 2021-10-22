@@ -4,7 +4,7 @@ clean:
 	rm chonky
 
 chonky: main.c
-	gcc main.c -Wall -Wextra -pedantic-errors -std=c11 -g -o chonky
+	gcc main.c -o chonky -Wall -Wextra -pedantic-errors -std=c11 -ggdb3 -fsanitize=address,leak,undefined
 
 test.img:
 	rm -f test.img
