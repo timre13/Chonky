@@ -8,6 +8,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdint.h>
+#include <assert.h>
 
 //------------------------------------------------------------------------------
 
@@ -286,6 +287,106 @@ char* lfeGetNameASCII(const LfeEntry* entry)
 
 //------------------------------------------------------------------------------
 
+FILE* file;
+BPB bpb;
+EBPB ebpb;
+int firstDataSector;
+
+//------------------------------------------------------------------------------
+
+typedef struct DirIterator
+{
+    uint64_t _address;
+    char* _longFilename;
+
+} DirIterator;
+
+typedef struct DirIteratorEntry
+{
+    DirEntry* entry;
+    char* longFilename;
+} DirIteratorEntry;
+
+void dirIteratorEntryFree(DirIteratorEntry** entryP)
+{
+    free((*entryP)->entry);
+    free((*entryP)->longFilename);
+    free(*entryP);
+    *entryP = NULL;
+}
+
+void dirIteratorRewind(DirIterator* it)
+{
+    it->_address = firstDataSector*bpb.sectorSize;
+}
+
+DirIterator* dirIteratorNew()
+{
+    DirIterator* it = malloc(sizeof(DirIterator));
+    dirIteratorRewind(it);
+    it->_longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
+    return it;
+}
+
+void dirIteratorFree(DirIterator** itP)
+{
+    free((*itP)->_longFilename);
+    free(*itP);
+    *itP = NULL;
+}
+
+DirIteratorEntry* dirIteratorNext(DirIterator* it)
+{
+    if (it->_address == 0) // If the iterator ended
+    {
+        return NULL;
+    }
+
+    DirEntry* directory = malloc(sizeof(DirEntry));
+    assert(directory);
+    while (true)
+    {
+        //printf("Reading dir. entry at 0x%lx\n", it->_address);
+        fseek(file, it->_address, SEEK_SET);
+        fread(directory, sizeof(DirEntry), 1, file);
+        it->_address += sizeof(DirEntry);
+
+        if (directory->fileName[0] == 0) // End of directory
+        {
+            it->_address = 0;
+            free(directory);
+            return NULL;
+        }
+
+        if (directory->fileName[0] == 0xe5) // Unused entry, skip
+        {
+            continue;
+        }
+
+        if (isLongFileNameEntry(directory->attributes)) // LFE Entry
+        {
+            const LfeEntry* lfeEntry = (LfeEntry*)directory;
+            char* lfeVal = lfeGetNameASCII(lfeEntry);
+            strncpy(it->_longFilename+((lfeEntry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
+            //printf("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
+            it->_longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
+            free(lfeVal);
+        }
+        else // Regular directory entry
+        {
+            DirIteratorEntry* dirItEntry = malloc(sizeof(DirIteratorEntry));
+            assert(dirItEntry);
+            dirItEntry->entry = directory;
+            dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
+            strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
+            return dirItEntry;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+
+
 int main(int argc, char** argv)
 {
     if (argc != 2)
@@ -294,7 +395,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    FILE* file = fopen(argv[1], "r");
+    file = fopen(argv[1], "r");
     if (!file)
     {
         fprintf(stderr, "Failed to open file: %s: %s\n", argv[1], strerror(errno));
@@ -307,7 +408,6 @@ int main(int argc, char** argv)
             diskSize, diskSize/1024.f, diskSize/1024.f/1024.f, diskSize/1024.f/1024.f/1024.f);
     fseek(file, 0, SEEK_SET);
 
-    BPB bpb;
     fread(&bpb, sizeof(bpb), 1, file);
     printf("OEM:                    %.*s\n", BPB_OEM_LEN, bpb.oemIdentifier);
     printf("Bytes/sector:           %u\n", bpb.sectorSize);
@@ -322,7 +422,6 @@ int main(int argc, char** argv)
     printf("Sector count:           %u\n", getSectorCount(&bpb));
     printf("\n");
 
-    EBPB ebpb;
     fseek(file, sizeof(bpb), SEEK_SET);
     fread(&ebpb, sizeof(ebpb), 1, file);
     printf("Sectors/FAT:            %u\n", ebpb.sectorsPerFat);
@@ -347,7 +446,7 @@ int main(int argc, char** argv)
     printf("\n");
 
     //const int rootCluster = ebpb.rootDirClusterNum;
-    const int firstDataSector = bpb.reservedSectorCount + (bpb.fatCount*ebpb.sectorsPerFat);
+    firstDataSector = bpb.reservedSectorCount + (bpb.fatCount*ebpb.sectorsPerFat);
     //const int firstFatSector = bpb.reservedSectorCount;
 
     //const int cluster = 0;
@@ -359,47 +458,20 @@ int main(int argc, char** argv)
     for (int i=0; i < 67; ++i) putchar((i == 13 || i == 58) ? '|' : '-');
     putchar('\n');
 
-    uint32_t dirStart = firstDataSector*bpb.sectorSize;
-    char* longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
+    // List directory
+    DirIterator* it = dirIteratorNew();
     while (true)
     {
-        //printf("Reading dir. entry at 0x%x\n", dirStart);
-        DirEntry directory;
-        fseek(file, dirStart, SEEK_SET);
-        fread(&directory, sizeof(directory), 1, file);
-        if (directory.fileName[0] == 0) // End of directory
-        {
-            printf("===== End of directory listing =====\n");
+        DirIteratorEntry* dirEntry = dirIteratorNext(it);
+        if (dirEntry == NULL)
             break;
-        }
-        if (directory.fileName[0] == 0xe5) // Unused entry
-        {
-            goto increment;
-        }
-
-        if (isLongFileNameEntry(directory.attributes))
-        {
-            const LfeEntry* entry = (LfeEntry*)&directory;
-            char* lfeVal = lfeGetNameASCII(entry);
-            strncpy(longFilename+((entry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
-            //printf("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
-            longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
-            free(lfeVal);
-        }
-        else
-        {
-            char* attrs = dirEntryAttrsToStr(directory.attributes);
-            printf("%-11.11s  |  %40s  |  %s\n",
-                    directory.fileName, longFilename, attrs);
-            free(attrs);
-        }
-
-increment:
-        ;
-        dirStart += sizeof(DirEntry);
+        char* attrs = dirEntryAttrsToStr(dirEntry->entry->attributes);
+        printf("%-11.11s  |  %40s  |  %s\n",
+                dirEntry->entry->fileName, dirEntry->longFilename, attrs);
+        free(attrs);
+        dirIteratorEntryFree(&dirEntry);
     }
-    free(longFilename);
-
+    dirIteratorFree(&it);
 
     fclose(file);
     return 0;
