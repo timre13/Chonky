@@ -237,6 +237,7 @@ const char* dirEntryDateToStr(const DirEntryDate* input)
 //------------------------------------------------------------------------------
 
 #define LFE_ENTRY_NAME_LEN 13
+#define LFE_FULL_NAME_LEN LFE_ENTRY_NAME_LEN*16
 typedef struct LfeEntry
 {
     uint8_t nameStrIndex;
@@ -249,7 +250,7 @@ typedef struct LfeEntry
     uint16_t _name2[2];
 } PACKED LfeEntry;
 
-uint16_t* lfeGetNameUTF16(const LfeEntry* entry)
+uint16_t* lfeGetNameUCS2(const LfeEntry* entry)
 {
     uint16_t* buffer = calloc(LFE_ENTRY_NAME_LEN+1, 2);
     for (int i=0; i < 5; ++i)
@@ -272,7 +273,7 @@ uint16_t* lfeGetNameUTF16(const LfeEntry* entry)
 
 char* lfeGetNameASCII(const LfeEntry* entry)
 {
-    uint16_t* buffer = lfeGetNameUTF16(entry);
+    uint16_t* buffer = lfeGetNameUCS2(entry);
     char* output = malloc(LFE_ENTRY_NAME_LEN+1);
     for (int i=0; i < LFE_ENTRY_NAME_LEN; ++i)
     {
@@ -343,6 +344,7 @@ int main(int argc, char** argv)
     fread(&mbrSignature, 2, 1, file);
     printf("MBR Signature:          0x%x (%s)\n", mbrSignature, (mbrSignature == 0xaa55 ? "OK" : "BAD"));
 
+    printf("\n");
 
     //const int rootCluster = ebpb.rootDirClusterNum;
     const int firstDataSector = bpb.reservedSectorCount + (bpb.fatCount*ebpb.sectorsPerFat);
@@ -351,8 +353,14 @@ int main(int argc, char** argv)
     //const int cluster = 0;
     //const int firstSectorOfCluster = ((cluster - 2)*bpb.sectorsPerClusters) + firstDataSector;
 
+
+    // Print table heading
+    printf("%-11.11s  |  %40s  |  %s\n", "FILE NAME", "LONG FILE NAME", "ATTRS.");
+    for (int i=0; i < 67; ++i) putchar((i == 13 || i == 58) ? '|' : '-');
+    putchar('\n');
+
     uint32_t dirStart = firstDataSector*bpb.sectorSize;
-    char* longFilename = calloc(LFE_ENTRY_NAME_LEN*16+1, 1);
+    char* longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
     while (true)
     {
         //printf("Reading dir. entry at 0x%x\n", dirStart);
@@ -371,18 +379,17 @@ int main(int argc, char** argv)
 
         if (isLongFileNameEntry(directory.attributes))
         {
-            // FIXME: Improve LFE support. (fix truncated file name, recognize more flags, etc.)
-            // See: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#VFAT_long_file_names
             const LfeEntry* entry = (LfeEntry*)&directory;
             char* lfeVal = lfeGetNameASCII(entry);
-            strcpy(longFilename+((entry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal);
+            strncpy(longFilename+((entry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
             //printf("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
+            longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
             free(lfeVal);
         }
         else
         {
             char* attrs = dirEntryAttrsToStr(directory.attributes);
-            printf("File name: %-11.11s  |  %255.255s  |  Attrs.: %s\n",
+            printf("%-11.11s  |  %40s  |  %s\n",
                     directory.fileName, longFilename, attrs);
             free(attrs);
         }
