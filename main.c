@@ -310,6 +310,7 @@ typedef struct DirIteratorEntry
 {
     DirEntry* entry;
     char* longFilename;
+    uint64_t address;
 } DirIteratorEntry;
 
 void dirIteratorEntryFree(DirIteratorEntry** entryP)
@@ -318,6 +319,11 @@ void dirIteratorEntryFree(DirIteratorEntry** entryP)
     free((*entryP)->longFilename);
     free(*entryP);
     *entryP = NULL;
+}
+
+const char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
+{
+    return (entry->longFilename[0] != 0) ? entry->longFilename : (char*)entry->entry->fileName;
 }
 
 void dirIteratorRewind(DirIterator* it)
@@ -383,14 +389,32 @@ DirIteratorEntry* dirIteratorNext(DirIterator* it)
             assert(dirItEntry);
             dirItEntry->entry = directory;
             dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
+            dirItEntry->address = it->_address-sizeof(DirEntry);
             strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
+            it->_longFilename[0] = 0; // Clear buffer
             return dirItEntry;
         }
     }
 }
 
-//------------------------------------------------------------------------------
+DirIteratorEntry* dirIteratorFind(const char* fileName)
+{
+    DirIterator* it = dirIteratorNew();
+    DirIteratorEntry* result;
+    while (true)
+    {
+        result = dirIteratorNext(it);
+        if (result == NULL || strcmp(dirIteratorEntryGetFileName(result), fileName) == 0)
+        {
+            break;
+        }
+        dirIteratorEntryFree(&result);
+    }
+    dirIteratorFree(&it);
+    return result;
+}
 
+//------------------------------------------------------------------------------
 
 int main(int argc, char** argv)
 {
@@ -459,13 +483,14 @@ int main(int argc, char** argv)
 
 
     // Print table heading
-    printf("%-11.11s  |  %50s  |  %s  |  %s\n",
-            "FILE NAME", "LONG FILE NAME", "ATTRS.", "CREAT. DATE & TIME");
-    for (int i=0; i < 101; ++i) putchar((i == 13 || i == 68 || i == 79) ? '|' : '-');
+    printf("%-11.11s  |  %50s  |  %10s  |  %s  |  %s\n",
+            "FILE NAME", "LONG FILE NAME", "SIZE", "ATTRS.", "CREAT. DATE & TIME");
+    for (int i=0; i < 116; ++i) putchar((i == 13 || i == 68 || i == 83 || i == 94) ? '|' : '-');
     putchar('\n');
 
     // List directory
     DirIterator* it = dirIteratorNew();
+    int fileCount = 0;
     while (true)
     {
         DirIteratorEntry* dirEntry = dirIteratorNext(it);
@@ -477,14 +502,29 @@ int main(int argc, char** argv)
         char* cDateStr = dirEntryDateToStr(&cDate);
         DirEntryTime cTime = toDirEntryTime(dirEntry->entry->_creationTime);
         char* cTimeStr = dirEntryTimeToStr(&cTime);
-        printf("%-11.11s  |  %50s  |  %s  |  %s %s\n",
-                dirEntry->entry->fileName, dirEntry->longFilename, attrs, cDateStr, cTimeStr);
+        printf("%-11.11s  |  %50s  |  ", dirEntry->entry->fileName, dirEntry->longFilename);
+        if (dirEntry->entry->attributes & DIRENTRY_ATTR_FLAG_DIRECTORY) { printf("     <DIR>"); }
+        else { printf("%10i", dirEntry->entry->fileSize); }
+        printf("  |  %s  |  %s %s\n", attrs, cDateStr, cTimeStr);
         free(attrs);
         free(cDateStr);
         free(cTimeStr);
         dirIteratorEntryFree(&dirEntry);
+        ++fileCount;
     }
     dirIteratorFree(&it);
+    printf("%i items in directory\n", fileCount);
+
+    DirIteratorEntry* found = dirIteratorFind("test.txt");
+    if (found)
+    {
+        printf("Found a file of %i bytes\n", found->entry->fileSize);
+        dirIteratorEntryFree(&found);
+    }
+    else
+    {
+        printf("\"test.txt\" Not found\n");
+    }
 
     fclose(file);
     return 0;
