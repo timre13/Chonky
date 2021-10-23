@@ -179,28 +179,31 @@ char* dirEntryAttrsToStr(uint8_t attrs)
 
 typedef struct DirEntryTime
 {
-    unsigned int hour;
-    unsigned int min;
-    unsigned int sec;
+    uint hour;
+    uint min;
+    uint sec;
 } PACKED DirEntryTime;
 
 DirEntryTime toDirEntryTime(uint16_t input)
 {
     DirEntryTime time = {
-        .hour = ((uint)input & (uint)0x1111100000000000) >> 11,
-        .min  = ((uint)input & (uint)0x0000011111100000) >> 5,
-        .sec  = ((uint)input & (uint)0x0000000000011111) * 2
+        .hour = (input & 0xf800) >> 11,
+        .min  = (input & 0x07e0) >> 5,
+        .sec  = (input & 0x001f) * 2
     };
     return time;
 }
 
-const char* dirEntryTimeToStr(const DirEntryTime* input)
+char* dirEntryTimeToStr(const DirEntryTime* input)
 {
     char* buffer = malloc(9);
-    if (snprintf(buffer, 9, "%02i-%02i-%02i", input->hour, input->min, input->sec))
+    if (input->hour > 23
+     || input->min > 59
+     || input->sec > 59
+     || snprintf(buffer, 9, "%02i:%02i:%02i", input->hour+1, input->min+1, input->sec) > 8)
     {
         // If no space for time, fill the output with ?s
-        strcpy(buffer, "\?\?-\?\?-\?\?");
+        strcpy(buffer, "\?\?:\?\?:\?\?");
     }
     return buffer;
 }
@@ -209,28 +212,30 @@ const char* dirEntryTimeToStr(const DirEntryTime* input)
 
 typedef struct DirEntryDate
 {
-    int year;
-    int month;
-    int day;
+    uint year;
+    uint month;
+    uint day;
 } PACKED DirEntryDate;
 
 DirEntryDate toDirEntryDate(uint16_t input)
 {
     DirEntryDate date = {
-        .year  = (input & 0x1111111000000000) >> 9,
-        .month = (input & 0x0000000111100000) >> 5,
-        .day   = (input & 0x0000000000011111)
+        .year  = (input & 0xfe00) >> 9,
+        .month = (input & 0x01e0) >> 5,
+        .day   = (input & 0x001f)
     };
     return date;
 }
 
-const char* dirEntryDateToStr(const DirEntryDate* input)
+char* dirEntryDateToStr(const DirEntryDate* input)
 {
-    char* buffer = malloc(9);
-    if (snprintf(buffer, 9, "%02i-%02i-%02i", input->year, input->month, input->day))
+    char* buffer = malloc(11);
+    if (input->month == 0 || input->month > 12
+     || input->day == 0 || input->day > 31
+     || snprintf(buffer, 11, "%04i-%02i-%02i", 1980+input->year, input->month, input->day) > 10)
     {
-        // If no space for date, fill the output with ?s
-        strcpy(buffer, "\?\?-\?\?-\?\?");
+        // If invalid, fill the output with ?s
+        strcpy(buffer, "\?\?\?\?-\?\?-\?\?");
     }
     return buffer;
 }
@@ -454,8 +459,9 @@ int main(int argc, char** argv)
 
 
     // Print table heading
-    printf("%-11.11s  |  %40s  |  %s\n", "FILE NAME", "LONG FILE NAME", "ATTRS.");
-    for (int i=0; i < 67; ++i) putchar((i == 13 || i == 58) ? '|' : '-');
+    printf("%-11.11s  |  %50s  |  %s  |  %s\n",
+            "FILE NAME", "LONG FILE NAME", "ATTRS.", "CREAT. DATE & TIME");
+    for (int i=0; i < 101; ++i) putchar((i == 13 || i == 68 || i == 79) ? '|' : '-');
     putchar('\n');
 
     // List directory
@@ -465,10 +471,17 @@ int main(int argc, char** argv)
         DirIteratorEntry* dirEntry = dirIteratorNext(it);
         if (dirEntry == NULL)
             break;
+
         char* attrs = dirEntryAttrsToStr(dirEntry->entry->attributes);
-        printf("%-11.11s  |  %40s  |  %s\n",
-                dirEntry->entry->fileName, dirEntry->longFilename, attrs);
+        DirEntryDate cDate = toDirEntryDate(dirEntry->entry->_creationDate);
+        char* cDateStr = dirEntryDateToStr(&cDate);
+        DirEntryTime cTime = toDirEntryTime(dirEntry->entry->_creationTime);
+        char* cTimeStr = dirEntryTimeToStr(&cTime);
+        printf("%-11.11s  |  %50s  |  %s  |  %s %s\n",
+                dirEntry->entry->fileName, dirEntry->longFilename, attrs, cDateStr, cTimeStr);
         free(attrs);
+        free(cDateStr);
+        free(cTimeStr);
         dirIteratorEntryFree(&dirEntry);
     }
     dirIteratorFree(&it);
