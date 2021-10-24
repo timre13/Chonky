@@ -51,13 +51,16 @@ typedef struct Fat32Context
     FILE* file;
     BPB* bpb;
     EBPB* ebpb;
-    int firstDataSector;
+    // The first sector where dir entries can be stored
+    uint32_t firstDataSector;
+    uint64_t rootDirAddr;
 } Fat32Context;
 
 Fat32Context* fat32ContextNew(const char* devFilePath);
 void fat32ContextFree(Fat32Context** contextP);
+uint32_t fat32GetFirstSectorOfCluster(const Fat32Context* cont, uint32_t cluster);
 void fat32PrintInfo(Fat32Context* cont);
-void fat32ListDir(Fat32Context* cont);
+void fat32ListDir(Fat32Context* cont, uint64_t addr);
 
 //------------------------------------------------------------------------------
 
@@ -148,6 +151,7 @@ typedef struct DirEntry
 
 bool isLongFileNameEntry(uint8_t attrs);
 uint32_t getFirstClusterNumber(const DirEntry* input);
+uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry);
 char* dirEntryAttrsToStr(uint8_t attrs);
 
 //------------------------------------------------------------------------------
@@ -212,10 +216,9 @@ typedef struct DirIterator
     char* _longFilename;
 } DirIterator;
 
-DirIterator* dirIteratorNewAtRoot(Fat32Context* cont); // Note: Sets the address to the root dir
 DirIterator* dirIteratorNew(uint64_t addr);
 DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it);
-DirIteratorEntry* dirIteratorFind(Fat32Context* cont, const char* fileName);
+DirIteratorEntry* dirIteratorFind(Fat32Context* cont, uint64_t addr, const char* fileName);
 void dirIteratorSetAddress(DirIterator* it, uint64_t addr);
 void dirIteratorRewind(DirIterator* it);
 void dirIteratorFree(DirIterator** itP);

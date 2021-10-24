@@ -47,6 +47,11 @@ uint32_t getFirstClusterNumber(const DirEntry* input)
     return ((uint32_t)input->_entryFirstClusterNum1 << 16) | (uint32_t)input->_entryFirstClusterNum2;
 }
 
+uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry)
+{
+    return fat32GetFirstSectorOfCluster(cont, getFirstClusterNumber(entry)) * cont->bpb->sectorSize;
+}
+
 char* dirEntryAttrsToStr(uint8_t attrs)
 {
     char* str = malloc(7);
@@ -169,11 +174,6 @@ const char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
     return (entry->longFilename[0] != 0) ? entry->longFilename : (char*)entry->entry->fileName;
 }
 
-DirIterator* dirIteratorNewAtRoot(Fat32Context* cont)
-{
-    return dirIteratorNew(cont->firstDataSector*cont->bpb->sectorSize);
-}
-
 DirIterator* dirIteratorNew(uint64_t addr)
 {
     DirIterator* it = malloc(sizeof(DirIterator));
@@ -234,9 +234,9 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
     }
 }
 
-DirIteratorEntry* dirIteratorFind(Fat32Context* cont, const char* fileName)
+DirIteratorEntry* dirIteratorFind(Fat32Context* cont, uint64_t addr, const char* fileName)
 {
-    DirIterator* it = dirIteratorNewAtRoot(cont);
+    DirIterator* it = dirIteratorNew(addr);
     DirIteratorEntry* result;
     while (true)
     {
@@ -292,6 +292,8 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     context->firstDataSector =
         context->bpb->reservedSectorCount
         + (context->bpb->fatCount*context->ebpb->sectorsPerFat);
+    context->rootDirAddr =
+        context->firstDataSector*context->bpb->sectorSize;
     return context;
 }
 
@@ -302,6 +304,11 @@ void fat32ContextFree(Fat32Context** contextP)
     free((*contextP)->ebpb);
     free(*contextP);
     *contextP = NULL;
+}
+
+uint32_t fat32GetFirstSectorOfCluster(const Fat32Context* cont, uint32_t cluster)
+{
+    return (cluster - 2) * cont->bpb->sectorsPerClusters + cont->firstDataSector;
 }
 
 void fat32PrintInfo(Fat32Context* cont)
@@ -346,8 +353,9 @@ void fat32PrintInfo(Fat32Context* cont)
     putchar('\n');
 }
 
-void fat32ListDir(Fat32Context* cont)
+void fat32ListDir(Fat32Context* cont, uint64_t addr)
 {
+    printf("Listing of 0x%lx:\n", addr);
     // Print table heading
     printf("%-11.11s  |  %50s  |  %10s  |  %s  |  %s\n",
             "FILE NAME", "LONG FILE NAME", "SIZE", "ATTRS.", "CREAT. DATE & TIME");
@@ -355,7 +363,7 @@ void fat32ListDir(Fat32Context* cont)
     putchar('\n');
 
     // List directory
-    DirIterator* it = dirIteratorNewAtRoot(cont);
+    DirIterator* it = dirIteratorNew(addr);
     int fileCount = 0;
     while (true)
     {

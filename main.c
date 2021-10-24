@@ -6,6 +6,35 @@
 #include <stdio.h>
 #include "fat32.h"
 
+void listDirsRecursively(Fat32Context* cont, uint64_t addr)
+{
+    if (addr == cont->rootDirAddr)
+        printf("Listing root dir\n");
+
+    fat32ListDir(cont, addr);
+    putchar('\n'); putchar('\n');
+
+    DirIterator* it = dirIteratorNew(addr);
+    while (true)
+    {
+        DirIteratorEntry* entry = dirIteratorNext(cont, it);
+        if (!entry)
+        {
+            break;
+        }
+
+        if ((entry->entry->attributes & DIRENTRY_ATTR_FLAG_DIRECTORY)
+         && (strncmp((char*)entry->entry->fileName, ".          ", DIRENTRY_FILENAME_LEN) != 0)
+         && (strncmp((char*)entry->entry->fileName, "..         ", DIRENTRY_FILENAME_LEN) != 0))
+        {
+            printf("Listing subdir: %s\n", dirIteratorEntryGetFileName(entry));
+            listDirsRecursively(cont, dirEntryGetDataAddress(cont, entry->entry));
+        }
+        dirIteratorEntryFree(&entry);
+    }
+    dirIteratorFree(&it);
+}
+
 int main(int argc, char** argv)
 {
     if (argc != 2)
@@ -21,28 +50,7 @@ int main(int argc, char** argv)
     }
 
     fat32PrintInfo(cont);
-
-    /*
-    const int rootCluster = ebpb.rootDirClusterNum;
-    const int firstFatSector = bpb.reservedSectorCount;
-
-    const int cluster = 0;
-    const int firstSectorOfCluster = ((cluster - 2)*bpb.sectorsPerClusters) + firstDataSector;
-    */
-
-    fat32ListDir(cont);
-    putchar('\n');
-
-    DirIteratorEntry* found = dirIteratorFind(cont, "test.txt");
-    if (found)
-    {
-        printf("Found a file of %i bytes\n", found->entry->fileSize);
-        dirIteratorEntryFree(&found);
-    }
-    else
-    {
-        printf("\"test.txt\" Not found\n");
-    }
+    listDirsRecursively(cont, cont->rootDirAddr);
 
     fat32ContextFree(&cont);
     return 0;
