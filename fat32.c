@@ -228,7 +228,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
             dirItEntry->address = it->_address-sizeof(DirEntry);
             strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
-            it->_longFilename[0] = 0; // Clear buffer
+            memset(it->_longFilename, 0, LFE_FULL_NAME_LEN+1);
             return dirItEntry;
         }
     }
