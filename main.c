@@ -49,8 +49,27 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    fat32PrintInfo(cont);
-    listDirsRecursively(cont, cont->rootDirAddr);
+    //fat32PrintInfo(cont);
+    //listDirsRecursively(cont, cont->rootDirAddr);
+
+    DirIteratorEntry* found = dirIteratorFind(cont, cont->rootDirAddr, "big.txt");
+    if (!found)
+    {
+        printf("File not found\n");
+        dirIteratorEntryFree(&found);
+    }
+    else
+    {
+        printf("Found file at 0x%lx\n", found->address);
+
+        printf("Reading file of %i bytes\n", found->entry->fileSize);
+        uint8_t* buffer = calloc(found->entry->fileSize, 1);
+        assert(buffer);
+        int readCount = dirEntryReadFileData(cont, found->entry, buffer, found->entry->fileSize);
+        printf("Read %i bytes\n", readCount);
+        printf("File content:\n%.*s", found->entry->fileSize, buffer);
+        free(buffer);
+    }
 
     fat32ContextFree(&cont);
     return 0;

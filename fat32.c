@@ -16,19 +16,19 @@ uint32_t getSectorCount(const BPB* input)
 
 //------------------------------------------------------------------------------
 
-uint32_t clusterEntryGetAddress(ClusterEntry entry)
+uint32_t clusterEntryGetIndex(ClusterEntry entry)
 {
     return entry & 0x0fffffff;
 }
 
 bool clusterEntryIsBadCluster(ClusterEntry entry)
 {
-    return clusterEntryGetAddress(entry) == 0x0ffffff7;
+    return clusterEntryGetIndex(entry) == 0x0ffffff7;
 }
 
 bool clusterEntryIsLastCluster(ClusterEntry entry)
 {
-    return clusterEntryGetAddress(entry) >= 0x0ffffff8;
+    return clusterEntryGetIndex(entry) >= 0x0ffffff8;
 }
 
 //------------------------------------------------------------------------------
@@ -44,7 +44,9 @@ bool isLongFileNameEntry(uint8_t attrs)
 
 uint32_t getFirstClusterNumber(const DirEntry* input)
 {
-    return ((uint32_t)input->_entryFirstClusterNum1 << 16) | (uint32_t)input->_entryFirstClusterNum2;
+    return clusterEntryGetIndex(
+            ((uint32_t)input->_entryFirstClusterNum1 << 16)
+           | (uint32_t)input->_entryFirstClusterNum2);
 }
 
 uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry)
@@ -70,6 +72,18 @@ char* dirEntryAttrsToStr(uint8_t attrs)
     if (attrs & DIRENTRY_ATTR_FLAG_ARCHIVE)     str[5] = 'A'; else str[5] = '-';
     str[6] = 0;
     return str;
+}
+
+int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buffer, size_t bufferSize)
+{
+    uint64_t address = dirEntryGetDataAddress(cont, entry);
+    if (clusterEntryIsBadCluster(address))
+    {
+        return 0; // Didn't read anything
+    }
+
+    fseek(cont->file, address, SEEK_SET);
+    return fread(buffer, 1, bufferSize, cont->file);
 }
 
 //------------------------------------------------------------------------------

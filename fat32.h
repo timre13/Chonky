@@ -120,7 +120,7 @@ typedef struct EBPB
  */
 typedef uint32_t ClusterEntry;
 
-uint32_t clusterEntryGetAddress(ClusterEntry entry);
+uint32_t clusterEntryGetIndex(ClusterEntry entry);
 bool clusterEntryIsBadCluster(ClusterEntry entry);
 bool clusterEntryIsLastCluster(ClusterEntry entry);
 
@@ -153,6 +153,7 @@ bool isLongFileNameEntry(uint8_t attrs);
 uint32_t getFirstClusterNumber(const DirEntry* input);
 uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry);
 char* dirEntryAttrsToStr(uint8_t attrs);
+int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buffer, size_t bufferSize);
 
 //------------------------------------------------------------------------------
 
