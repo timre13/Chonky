@@ -46,6 +46,8 @@ inline void printHex(unsigned char* buffer, int n)
 
 typedef struct BPB BPB;
 typedef struct EBPB EBPB;
+typedef struct DirIteratorEntry DirIteratorEntry;
+
 typedef struct Fat32Context
 {
     FILE* file;
@@ -61,6 +63,7 @@ void fat32ContextFree(Fat32Context** contextP);
 uint32_t fat32GetFirstSectorOfCluster(const Fat32Context* cont, uint32_t cluster);
 void fat32PrintInfo(Fat32Context* cont);
 void fat32ListDir(Fat32Context* cont, uint64_t addr);
+DirIteratorEntry* fat32Find(Fat32Context* cont, uint64_t addr, const char* fileName);
 
 //------------------------------------------------------------------------------
 
@@ -85,7 +88,7 @@ typedef struct BPB
     uint32_t    _largeSectCount;
 } PACKED BPB;
 
-uint32_t getSectorCount(const BPB* input);
+uint32_t BPBGetSectorCount(const BPB* input);
 
 //------------------------------------------------------------------------------
 
@@ -149,8 +152,10 @@ typedef struct DirEntry
     uint32_t    fileSize;
 } PACKED DirEntry;
 
-bool isLongFileNameEntry(uint8_t attrs);
-uint32_t getFirstClusterNumber(const DirEntry* input);
+bool dirEntryIsLFE(uint8_t attrs);
+bool dirEntryIsDir(const DirEntry* entry);
+bool dirEntryIsFile(const DirEntry* entry);
+uint32_t dirEntryGetFirstClusterNumber(const DirEntry* input);
 uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry);
 char* dirEntryAttrsToStr(uint8_t attrs);
 int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buffer, size_t bufferSize);
@@ -195,8 +200,8 @@ typedef struct LfeEntry
     uint16_t _name2[2];
 } PACKED LfeEntry;
 
-uint16_t* lfeGetNameUCS2(const LfeEntry* entry);
-char* lfeGetNameASCII(const LfeEntry* entry);
+uint16_t* lfeEntryGetNameUCS2(const LfeEntry* entry);
+char* lfeEntryGetNameASCII(const LfeEntry* entry);
 
 //------------------------------------------------------------------------------
 
@@ -219,7 +224,6 @@ typedef struct DirIterator
 
 DirIterator* dirIteratorNew(uint64_t addr);
 DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it);
-DirIteratorEntry* dirIteratorFind(Fat32Context* cont, uint64_t addr, const char* fileName);
 void dirIteratorSetAddress(DirIterator* it, uint64_t addr);
 void dirIteratorRewind(DirIterator* it);
 void dirIteratorFree(DirIterator** itP);

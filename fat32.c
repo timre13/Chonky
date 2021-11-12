@@ -7,7 +7,7 @@
 
 //------------------------------------------------------------------------------
 
-uint32_t getSectorCount(const BPB* input)
+uint32_t BPBGetSectorCount(const BPB* input)
 {
     // If _sectorCount is 0, there are more than 65535 sectors,
     // so the number is stored in _largeSectCount
@@ -33,7 +33,7 @@ bool clusterEntryIsLastCluster(ClusterEntry entry)
 
 //------------------------------------------------------------------------------
 
-bool isLongFileNameEntry(uint8_t attrs)
+bool dirEntryIsLFE(uint8_t attrs)
 {
     return attrs ==
         ( DIRENTRY_ATTR_FLAG_READONLY
@@ -42,7 +42,19 @@ bool isLongFileNameEntry(uint8_t attrs)
         | DIRENTRY_ATTR_FLAG_VOLUME_ID);
 }
 
-uint32_t getFirstClusterNumber(const DirEntry* input)
+bool dirEntryIsDir(const DirEntry* entry)
+{
+    return entry->attributes & DIRENTRY_ATTR_FLAG_DIRECTORY;
+}
+
+bool dirEntryIsFile(const DirEntry* entry)
+{
+    return (entry->attributes
+            & (DIRENTRY_ATTR_FLAG_VOLUME_ID | DIRENTRY_ATTR_FLAG_DIRECTORY)
+            ) == 0;
+}
+
+uint32_t dirEntryGetFirstClusterNumber(const DirEntry* input)
 {
     return clusterEntryGetIndex(
             ((uint32_t)input->_entryFirstClusterNum1 << 16)
@@ -51,14 +63,14 @@ uint32_t getFirstClusterNumber(const DirEntry* input)
 
 uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry)
 {
-    return fat32GetFirstSectorOfCluster(cont, getFirstClusterNumber(entry)) * cont->bpb->sectorSize;
+    return fat32GetFirstSectorOfCluster(cont, dirEntryGetFirstClusterNumber(entry)) * cont->bpb->sectorSize;
 }
 
 char* dirEntryAttrsToStr(uint8_t attrs)
 {
     char* str = malloc(7);
 
-    if (isLongFileNameEntry(attrs))
+    if (dirEntryIsLFE(attrs))
     {
         strncpy(str, "__LFE_", 7);
         return str;
@@ -139,7 +151,7 @@ char* dirEntryDateToStr(const DirEntryDate* input)
 
 //------------------------------------------------------------------------------
 
-uint16_t* lfeGetNameUCS2(const LfeEntry* entry)
+uint16_t* lfeEntryGetNameUCS2(const LfeEntry* entry)
 {
     uint16_t* buffer = calloc(LFE_ENTRY_NAME_LEN+1, 2);
     for (int i=0; i < 5; ++i)
@@ -160,9 +172,10 @@ uint16_t* lfeGetNameUCS2(const LfeEntry* entry)
     return buffer;
 }
 
-char* lfeGetNameASCII(const LfeEntry* entry)
+
+char* lfeEntryGetNameASCII(const LfeEntry* entry)
 {
-    uint16_t* buffer = lfeGetNameUCS2(entry);
+    uint16_t* buffer = lfeEntryGetNameUCS2(entry);
     char* output = malloc(LFE_ENTRY_NAME_LEN+1);
     for (int i=0; i < LFE_ENTRY_NAME_LEN; ++i)
     {
@@ -225,10 +238,10 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             continue;
         }
 
-        if (isLongFileNameEntry(directory->attributes)) // LFE Entry
+        if (dirEntryIsLFE(directory->attributes)) // LFE Entry
         {
             const LfeEntry* lfeEntry = (LfeEntry*)directory;
-            char* lfeVal = lfeGetNameASCII(lfeEntry);
+            char* lfeVal = lfeEntryGetNameASCII(lfeEntry);
             strncpy(it->_longFilename+((lfeEntry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
             //printf("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
             it->_longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
@@ -246,23 +259,6 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             return dirItEntry;
         }
     }
-}
-
-DirIteratorEntry* dirIteratorFind(Fat32Context* cont, uint64_t addr, const char* fileName)
-{
-    DirIterator* it = dirIteratorNew(addr);
-    DirIteratorEntry* result;
-    while (true)
-    {
-        result = dirIteratorNext(cont, it);
-        if (result == NULL || strcmp(dirIteratorEntryGetFileName(result), fileName) == 0)
-        {
-            break;
-        }
-        dirIteratorEntryFree(&result);
-    }
-    dirIteratorFree(&it);
-    return result;
 }
 
 void dirIteratorSetAddress(DirIterator* it, uint64_t addr)
@@ -343,7 +339,7 @@ void fat32PrintInfo(Fat32Context* cont)
     printf("Sectors/track:          %u\n",   cont->bpb->sectorsPerTrack);
     printf("Heads:                  %u\n",   cont->bpb->headCount);
     printf("Hidden sectors:         %u\n",   cont->bpb->hiddenSectCount);
-    printf("Sector count:           %u\n",   getSectorCount(cont->bpb));
+    printf("Sector count:           %u\n",   BPBGetSectorCount(cont->bpb));
     putchar('\n');
 
     printf("Sectors/FAT:            %u\n",   cont->ebpb->sectorsPerFat);
@@ -402,4 +398,21 @@ void fat32ListDir(Fat32Context* cont, uint64_t addr)
     }
     dirIteratorFree(&it);
     printf("%i items in directory\n", fileCount);
+}
+
+DirIteratorEntry* fat32Find(Fat32Context* cont, uint64_t addr, const char* fileName)
+{
+    DirIterator* it = dirIteratorNew(addr);
+    DirIteratorEntry* result;
+    while (true)
+    {
+        result = dirIteratorNext(cont, it);
+        if (result == NULL || strcmp(dirIteratorEntryGetFileName(result), fileName) == 0)
+        {
+            break;
+        }
+        dirIteratorEntryFree(&result);
+    }
+    dirIteratorFree(&it);
+    return result;
 }
