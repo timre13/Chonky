@@ -100,14 +100,18 @@ char* dirEntryAttrsToStr(uint8_t attrs)
     return str;
 }
 
+// TODO: Using offset
+// TODO: Allocate buffer?
 int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buffer, size_t bufferSize)
 {
-    uint64_t address = dirEntryGetDataAddress(cont, entry);
-    if (clusterEntryIsBadCluster(address))
+    // Don't do anything if the file is empty
+    // or it is on a bad cluster
+    if (dirEntryIsEmpty(entry) || clusterPtrIsBadCluster(dirEntryGetClusterPtr(entry)))
     {
-        return 0; // Didn't read anything
+        return 0;
     }
 
+    const uint64_t address = dirEntryGetDataAddress(cont, entry);
     fseek(cont->file, address, SEEK_SET);
     return fread(buffer, 1, bufferSize, cont->file);
 }
