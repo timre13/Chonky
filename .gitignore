@@ -3,3 +3,5 @@
 chonky
 .ccls-cache/
 Session.vim
+testfiles
+.vimspector.json

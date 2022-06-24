@@ -16,19 +16,24 @@ uint32_t BPBGetSectorCount(const BPB* input)
 
 //------------------------------------------------------------------------------
 
-uint32_t clusterEntryGetIndex(ClusterEntry entry)
+uint32_t clusterPtrGetIndex(ClusterPtr ptr)
 {
-    return entry & 0x0fffffff;
+    return ptr & 0x0fffffff;
 }
 
-bool clusterEntryIsBadCluster(ClusterEntry entry)
+bool clusterPtrIsBadCluster(ClusterPtr ptr)
 {
-    return clusterEntryGetIndex(entry) == 0x0ffffff7;
+    return clusterPtrGetIndex(ptr) == 0x0ffffff7;
 }
 
-bool clusterEntryIsLastCluster(ClusterEntry entry)
+bool clusterPtrIsLastCluster(ClusterPtr ptr)
 {
-    return clusterEntryGetIndex(entry) >= 0x0ffffff8;
+    return clusterPtrGetIndex(ptr) >= 0x0ffffff8;
+}
+
+bool clusterPtrIsNull(ClusterPtr ptr)
+{
+    return clusterPtrGetIndex(ptr) == 0;
 }
 
 //------------------------------------------------------------------------------
@@ -54,11 +59,20 @@ bool dirEntryIsFile(const DirEntry* entry)
             ) == 0;
 }
 
+bool dirEntryIsEmpty(const DirEntry* entry)
+{
+    return clusterPtrIsNull(dirEntryGetClusterPtr(entry));
+}
+
+uint32_t dirEntryGetClusterPtr(const DirEntry* entry)
+{
+    return ((uint32_t)entry->_entryFirstClusterNum1 << 16)
+          | (uint32_t)entry->_entryFirstClusterNum2;
+}
+
 uint32_t dirEntryGetFirstClusterNumber(const DirEntry* input)
 {
-    return clusterEntryGetIndex(
-            ((uint32_t)input->_entryFirstClusterNum1 << 16)
-           | (uint32_t)input->_entryFirstClusterNum2);
+    return clusterPtrGetIndex(dirEntryGetClusterPtr(input));
 }
 
 uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry)

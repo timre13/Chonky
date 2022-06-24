@@ -119,13 +119,14 @@ typedef struct EBPB
 
 /*
  * 4 most significant bits: reserved.
- * 28 least significant bits: address.
+ * 28 least significant bits: cluster index.
  */
-typedef uint32_t ClusterEntry;
+typedef uint32_t ClusterPtr;
 
-uint32_t clusterEntryGetIndex(ClusterEntry entry);
-bool clusterEntryIsBadCluster(ClusterEntry entry);
-bool clusterEntryIsLastCluster(ClusterEntry entry);
+uint32_t clusterPtrGetIndex(ClusterPtr ptr);
+bool clusterPtrIsBadCluster(ClusterPtr ptr);
+bool clusterPtrIsLastCluster(ClusterPtr ptr);
+bool clusterPtrIsNull(ClusterPtr ptr);
 
 //------------------------------------------------------------------------------
 
@@ -155,6 +156,8 @@ typedef struct DirEntry
 bool dirEntryIsLFE(uint8_t attrs);
 bool dirEntryIsDir(const DirEntry* entry);
 bool dirEntryIsFile(const DirEntry* entry);
+bool dirEntryIsEmpty(const DirEntry* entry);
+ClusterPtr dirEntryGetClusterPtr(const DirEntry* entry);
 uint32_t dirEntryGetFirstClusterNumber(const DirEntry* input);
 uint64_t dirEntryGetDataAddress(const Fat32Context* cont, const DirEntry* entry);
 char* dirEntryAttrsToStr(uint8_t attrs);
