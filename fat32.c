@@ -90,12 +90,12 @@ char* dirEntryAttrsToStr(uint8_t attrs)
         return str;
     }
 
-    if (attrs & DIRENTRY_ATTR_FLAG_READONLY)    str[0] = 'R'; else str[0] = '-';
-    if (attrs & DIRENTRY_ATTR_FLAG_HIDDEN)      str[1] = 'H'; else str[1] = '-';
-    if (attrs & DIRENTRY_ATTR_FLAG_SYSTEM)      str[2] = 'S'; else str[2] = '-';
-    if (attrs & DIRENTRY_ATTR_FLAG_VOLUME_ID)   str[3] = 'V'; else str[3] = '-';
-    if (attrs & DIRENTRY_ATTR_FLAG_DIRECTORY)   str[4] = 'D'; else str[4] = '-';
-    if (attrs & DIRENTRY_ATTR_FLAG_ARCHIVE)     str[5] = 'A'; else str[5] = '-';
+    str[0] = (attrs & DIRENTRY_ATTR_FLAG_READONLY)  ? 'R' : '-';
+    str[1] = (attrs & DIRENTRY_ATTR_FLAG_HIDDEN)    ? 'H' : '-';
+    str[2] = (attrs & DIRENTRY_ATTR_FLAG_SYSTEM)    ? 'S' : '-';
+    str[3] = (attrs & DIRENTRY_ATTR_FLAG_VOLUME_ID) ? 'V' : '-';
+    str[4] = (attrs & DIRENTRY_ATTR_FLAG_DIRECTORY) ? 'D' : '-';
+    str[5] = (attrs & DIRENTRY_ATTR_FLAG_ARCHIVE)   ? 'A' : '-';
     str[6] = 0;
     return str;
 }
