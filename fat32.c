@@ -44,6 +44,17 @@ bool clusterPtrIsNull(ClusterPtr ptr)
 
 //------------------------------------------------------------------------------
 
+bool dirEntryIsVolumeLabel(const DirEntry* entry)
+{
+    if ((entry->attributes & (DIRENTRY_ATTR_VOLUME_ID | DIRENTRY_ATTR_DIRECTORY)) == DIRENTRY_ATTR_VOLUME_ID)
+    {
+        assert(entry->_entryFirstClusterNum1 == 0);
+        assert(entry->_entryFirstClusterNum2 == 0);
+        return true;
+    }
+    return false;
+}
+
 bool dirEntryIsLFE(uint8_t attrs)
 {
     return attrs ==
