@@ -5,6 +5,12 @@
 
 #include "fat32.h"
 
+static inline ulong umin(ulong a, ulong b)
+{
+    return (a < b) ? a : b;
+}
+
+
 //------------------------------------------------------------------------------
 
 uint32_t BPBGetSectorCount(const BPB* input)
@@ -113,7 +119,7 @@ int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buf
 
     const uint64_t address = dirEntryGetDataAddress(cont, entry);
     fseek(cont->file, address, SEEK_SET);
-    return fread(buffer, 1, bufferSize, cont->file);
+    return fread(buffer, 1, umin(bufferSize, entry->fileSize), cont->file);
 }
 
 //------------------------------------------------------------------------------

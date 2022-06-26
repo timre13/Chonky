@@ -17,18 +17,14 @@
 
 #define PACKED __attribute__((packed))
 
-inline long limit(long val, long _limit)
-{
-    return val > _limit ? _limit : val;
-}
+typedef unsigned int uint;
+typedef unsigned long int ulong;
 
 typedef enum bool
 {
     false,
     true,
 } bool;
-
-typedef unsigned int uint;
 
 inline void printHex(unsigned char* buffer, int n)
 {
