@@ -288,18 +288,17 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
     const uint clusterSizeBytes = cont->bpb->sectorsPerClusters * cont->bpb->sectorSize;
     while (true)
     {
+        uint64_t newAddr = it->_address+sizeof(DirEntry);
+
         //printf("Reading dir. entry at 0x%lx\n", it->_address);
-        // FIXME: Entry gets overwritten at cluster boundary
-        //        so the last file in the cluster gets "lost"
         fseek(cont->file, it->_address, SEEK_SET);
         fread(directory, sizeof(DirEntry), 1, cont->file);
-        it->_address += sizeof(DirEntry);
 
         // If we are at a cluster boundary
-        if (it->_address % clusterSizeBytes == 0)
+        if (newAddr % clusterSizeBytes == 0)
         {
             // TODO: Works, but WTF
-            const ClusterPtr clusterI = (it->_address-cont->bpb->reservedSectorCount*cont->bpb->sectorSize)/clusterSizeBytes-cont->bpb->sectorSize+1;
+            const ClusterPtr clusterI = (newAddr-cont->bpb->reservedSectorCount*cont->bpb->sectorSize)/clusterSizeBytes-cont->bpb->sectorSize+1;
             printf("End of cluster: 0x%x\n", clusterI);
             const ClusterPtr nextCluster = fatGetNextClusterPtr(cont, clusterI);
             assert(!clusterPtrIsNull(nextCluster));
@@ -314,16 +313,15 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             else
             {
                 printf("Next cluster is 0x%x\n", nextCluster);
-                it->_address = cont->rootDirAddr+(nextCluster-cont->ebpb->rootDirClusterNum)*cont->bpb->sectorsPerClusters*cont->bpb->sectorSize;
-                continue;
+                newAddr = cont->rootDirAddr+(nextCluster-cont->ebpb->rootDirClusterNum)*cont->bpb->sectorsPerClusters*cont->bpb->sectorSize;
             }
         }
 
         if (directory->fileName[0] == 0) // End of directory
         {
+            printf("End of dir\n");
             it->_address = 0;
             free(directory);
-            printf("End of dir\n");
             return NULL;
         }
 
@@ -349,11 +347,14 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             assert(dirItEntry);
             dirItEntry->entry = directory;
             dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
-            dirItEntry->address = it->_address-sizeof(DirEntry);
+            dirItEntry->address = it->_address;
             strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
             memset(it->_longFilename, 0, LFE_FULL_NAME_LEN+1);
+            it->_address = newAddr;
             return dirItEntry;
         }
+
+        it->_address = newAddr;
     }
 }
 
