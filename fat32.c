@@ -10,6 +10,17 @@ static inline ulong umin(ulong a, ulong b)
     return (a < b) ? a : b;
 }
 
+void printHex(unsigned char* buffer, int n)
+{
+    for (int i=0; i < n; ++i)
+    {
+        printf("%02x ", buffer[i]);
+        if (i % 32 == 31)
+        {
+            printf("\n");
+        }
+    }
+}
 
 //------------------------------------------------------------------------------
 
@@ -40,6 +51,19 @@ bool clusterPtrIsLastCluster(ClusterPtr ptr)
 bool clusterPtrIsNull(ClusterPtr ptr)
 {
     return clusterPtrGetIndex(ptr) == 0;
+}
+
+uint32_t fatGetNextClusterPtr(const Fat32Context* cont, ClusterPtr current)
+{
+    const uint fatOffset = clusterPtrGetIndex(current) * 4;
+    // TODO: Clean up
+    //const uint fatIndex = fatOffset / cont->fatSizeBytes; // Index of the FAT
+    //const uint entry = fatOffset % cont->fatSizeBytes; // Offset inside the FAT
+    //assert(fatIndex == 0); // TODO: Support multiple FATs
+    //assert(entry < cont->fatSizeBytes/4);
+    //printHex((uint8_t*)cont->fat+current, 4);
+    //printf("\n0x%x -> 0x%02x\n", current, cont->fat[current+0]);
+    return *(uint32_t*)&cont->fat[fatOffset];
 }
 
 //------------------------------------------------------------------------------
@@ -127,6 +151,9 @@ int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buf
     {
         return 0;
     }
+
+    // FIXME: Reading large files is probably broken
+    //        Follow cluster chains
 
     const uint64_t address = dirEntryGetDataAddress(cont, entry);
     fseek(cont->file, address, SEEK_SET);
@@ -254,22 +281,51 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
 
     DirEntry* directory = malloc(sizeof(DirEntry));
     assert(directory);
+    const uint clusterSizeBytes = cont->bpb->sectorsPerClusters * cont->bpb->sectorSize;
     while (true)
     {
         //printf("Reading dir. entry at 0x%lx\n", it->_address);
+        // FIXME: Entry gets overwritten at cluster boundary
+        //        so the last file in the cluster gets "lost"
         fseek(cont->file, it->_address, SEEK_SET);
         fread(directory, sizeof(DirEntry), 1, cont->file);
         it->_address += sizeof(DirEntry);
+
+        // If we are at a cluster boundary
+        if (it->_address % clusterSizeBytes == 0)
+        {
+            // TODO: Works, but WTF
+            const ClusterPtr clusterI = (it->_address-cont->bpb->reservedSectorCount*cont->bpb->sectorSize)/clusterSizeBytes-cont->bpb->sectorSize+1;
+            printf("End of cluster: 0x%x\n", clusterI);
+            const ClusterPtr nextCluster = fatGetNextClusterPtr(cont, clusterI);
+            assert(!clusterPtrIsNull(nextCluster));
+            assert(!clusterPtrIsBadCluster(nextCluster));
+            if (clusterPtrIsLastCluster(nextCluster))
+            {
+                printf("End of cluster chain (next: 0x%x)\n", nextCluster);
+                it->_address = 0;
+                free(directory);
+                return NULL;
+            }
+            else
+            {
+                printf("Next cluster is 0x%x\n", nextCluster);
+                it->_address = cont->rootDirAddr+(nextCluster-cont->ebpb->rootDirClusterNum)*cont->bpb->sectorsPerClusters*cont->bpb->sectorSize;
+                continue;
+            }
+        }
 
         if (directory->fileName[0] == 0) // End of directory
         {
             it->_address = 0;
             free(directory);
+            printf("End of dir\n");
             return NULL;
         }
 
         if (directory->fileName[0] == 0xe5) // Unused entry, skip
         {
+            printf("Unused entry\n");
             continue;
         }
 
@@ -279,6 +335,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             char* lfeVal = lfeEntryGetNameASCII(lfeEntry);
             strncpy(it->_longFilename+((lfeEntry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
             //printf("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
+            //printf("LFE Entry\n");
             it->_longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
             free(lfeVal);
         }
@@ -334,6 +391,15 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     fseek(context->file, sizeof(BPB), SEEK_SET);
     fread(context->ebpb, sizeof(EBPB), 1, context->file);
 
+    context->fatSizeBytes = context->ebpb->sectorsPerFat*context->bpb->sectorSize;
+    context->fat = malloc(context->fatSizeBytes);
+    assert(context->fat);
+    const uint fatStart = context->bpb->reservedSectorCount*context->bpb->sectorSize;
+    printf("FAT start: 0x%x\n", fatStart);
+    fseek(context->file, fatStart, SEEK_SET);
+    //fread(context->fat, sizeof(uint32_t), context->fatSizeBytes/sizeof(uint32_t), context->file);
+    fread(context->fat, 1, context->fatSizeBytes, context->file);
+
     context->firstDataSector =
         context->bpb->reservedSectorCount
         + (context->bpb->fatCount*context->ebpb->sectorsPerFat);
@@ -347,6 +413,7 @@ void fat32ContextFree(Fat32Context** contextP)
     fclose((*contextP)->file);
     free((*contextP)->bpb);
     free((*contextP)->ebpb);
+    free((*contextP)->fat);
     free(*contextP);
     *contextP = NULL;
 }
@@ -383,7 +450,7 @@ void fat32PrintInfo(Fat32Context* cont)
     printf("Root dir cluster:       %u\n",   cont->ebpb->rootDirClusterNum);
     printf("FSInfo sector:          %u\n",   cont->ebpb->fsInfoSectorNum);
     printf("Backup boot sector:     %u\n",   cont->ebpb->backupSectorNum);
-    printf("Drive number:           %u\n",   cont->ebpb->driveNum);
+    printf("Drive number:           0x%x\n", cont->ebpb->driveNum);
     printf("NT Flags:               0x%x\n", cont->ebpb->ntFlags);
     printf("Signature:              0x%u\n", cont->ebpb->signature);
     printf("Serial number:          0x%x\n", cont->ebpb->serialNum);

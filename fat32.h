@@ -26,17 +26,7 @@ typedef enum bool
     true,
 } bool;
 
-inline void printHex(unsigned char* buffer, int n)
-{
-    for (int i=0; i < n; ++i)
-    {
-        printf("%02x ", buffer[i]);
-        if (i % 32 == 31)
-        {
-            printf("\n");
-        }
-    }
-}
+void printHex(unsigned char* buffer, int n);
 
 //------------------------------------------------------------------------------
 
@@ -49,6 +39,8 @@ typedef struct Fat32Context
     FILE* file;
     BPB* bpb;
     EBPB* ebpb;
+    ulong fatSizeBytes;
+    uint8_t* fat;
     // The first sector where dir entries can be stored
     uint32_t firstDataSector;
     uint64_t rootDirAddr;
@@ -74,9 +66,9 @@ typedef struct BPB
     uint8_t     sectorsPerClusters;
     uint16_t    reservedSectorCount;
     uint8_t     fatCount;
-    uint16_t    dirEntryCount;
+    uint16_t    dirEntryCount; // TODO: 0 in FAT32?
     uint16_t    _sectorCount;
-    uint8_t     mediaType;
+    uint8_t     mediaType; // TODO: Interpret media type value
     uint16_t    _sectorsPerFat; // FAT12/FAT16 only, don't use
     uint16_t    sectorsPerTrack;
     uint16_t    headCount;
