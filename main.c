@@ -23,7 +23,7 @@ void listDirsRecursively(Fat32Context* cont, uint64_t addr)
             break;
         }
 
-        if ((entry->entry->attributes & DIRENTRY_ATTR_FLAG_DIRECTORY)
+        if ((dirEntryIsDir(entry->entry))
          && (strncmp((char*)entry->entry->fileName, ".          ", DIRENTRY_FILENAME_LEN) != 0)
          && (strncmp((char*)entry->entry->fileName, "..         ", DIRENTRY_FILENAME_LEN) != 0))
         {

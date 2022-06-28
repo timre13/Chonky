@@ -115,16 +115,29 @@ uint32_t clusterPtrGetIndex(ClusterPtr ptr);
 bool clusterPtrIsBadCluster(ClusterPtr ptr);
 bool clusterPtrIsLastCluster(ClusterPtr ptr);
 bool clusterPtrIsNull(ClusterPtr ptr);
+uint32_t fatGetNextClusterPtr(const Fat32Context* cont, ClusterPtr current);
 
 //------------------------------------------------------------------------------
 
 #define DIRENTRY_FILENAME_LEN 11
-#define DIRENTRY_ATTR_FLAG_READONLY     0x01
-#define DIRENTRY_ATTR_FLAG_HIDDEN       0x02
-#define DIRENTRY_ATTR_FLAG_SYSTEM       0x04
-#define DIRENTRY_ATTR_FLAG_VOLUME_ID    0x08
-#define DIRENTRY_ATTR_FLAG_DIRECTORY    0x10
-#define DIRENTRY_ATTR_FLAG_ARCHIVE      0x20
+#define DIRENTRY_ATTR_READONLY  (1 << 0)
+#define DIRENTRY_ATTR_HIDDEN    (1 << 1)
+#define DIRENTRY_ATTR_SYSTEM    (1 << 2)
+#define DIRENTRY_ATTR_VOLUME_ID (1 << 3)
+#define DIRENTRY_ATTR_DIRECTORY (1 << 4)
+#define DIRENTRY_ATTR_ARCHIVE   (1 << 5)
+#define DIRENTRY_ATTR_LONG_NAME       \
+            ( DIRENTRY_ATTR_READONLY  \
+            | DIRENTRY_ATTR_HIDDEN    \
+            | DIRENTRY_ATTR_SYSTEM    \
+            | DIRENTRY_ATTR_VOLUME_ID )
+#define DIRENTRY_MASK_LONG_NAME       \
+            ( DIRENTRY_ATTR_READONLY  \
+            | DIRENTRY_ATTR_HIDDEN    \
+            | DIRENTRY_ATTR_SYSTEM    \
+            | DIRENTRY_ATTR_VOLUME_ID \
+            | DIRENTRY_ATTR_DIRECTORY \
+            | DIRENTRY_ATTR_ARCHIVE   )
 typedef struct DirEntry
 {
     uint8_t     fileName[DIRENTRY_FILENAME_LEN];
@@ -141,6 +154,7 @@ typedef struct DirEntry
     uint32_t    fileSize;
 } PACKED DirEntry;
 
+bool dirEntryIsVolumeLabel(const DirEntry* entry);
 bool dirEntryIsLFE(uint8_t attrs);
 bool dirEntryIsDir(const DirEntry* entry);
 bool dirEntryIsFile(const DirEntry* entry);

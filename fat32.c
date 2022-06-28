@@ -70,7 +70,8 @@ uint32_t fatGetNextClusterPtr(const Fat32Context* cont, ClusterPtr current)
 
 bool dirEntryIsVolumeLabel(const DirEntry* entry)
 {
-    if ((entry->attributes & (DIRENTRY_ATTR_VOLUME_ID | DIRENTRY_ATTR_DIRECTORY)) == DIRENTRY_ATTR_VOLUME_ID)
+    if (!dirEntryIsLFE(entry->attributes)
+    && (entry->attributes & (DIRENTRY_ATTR_VOLUME_ID | DIRENTRY_ATTR_DIRECTORY)) == DIRENTRY_ATTR_VOLUME_ID)
     {
         assert(entry->_entryFirstClusterNum1 == 0);
         assert(entry->_entryFirstClusterNum2 == 0);
@@ -81,23 +82,24 @@ bool dirEntryIsVolumeLabel(const DirEntry* entry)
 
 bool dirEntryIsLFE(uint8_t attrs)
 {
-    return attrs ==
-        ( DIRENTRY_ATTR_FLAG_READONLY
-        | DIRENTRY_ATTR_FLAG_HIDDEN
-        | DIRENTRY_ATTR_FLAG_SYSTEM
-        | DIRENTRY_ATTR_FLAG_VOLUME_ID);
+    return (attrs & DIRENTRY_MASK_LONG_NAME) == DIRENTRY_ATTR_LONG_NAME;
 }
 
 bool dirEntryIsDir(const DirEntry* entry)
 {
-    return entry->attributes & DIRENTRY_ATTR_FLAG_DIRECTORY;
+    if (!dirEntryIsLFE(entry->attributes)
+    && (entry->attributes & (DIRENTRY_ATTR_VOLUME_ID | DIRENTRY_ATTR_DIRECTORY)) == DIRENTRY_ATTR_DIRECTORY)
+    {
+        assert(entry->fileSize == 0);
+        return true;
+    }
+    return false;
 }
 
 bool dirEntryIsFile(const DirEntry* entry)
 {
-    return (entry->attributes
-            & (DIRENTRY_ATTR_FLAG_VOLUME_ID | DIRENTRY_ATTR_FLAG_DIRECTORY)
-            ) == 0;
+    return (!dirEntryIsLFE(entry->attributes)
+        && (entry->attributes & (DIRENTRY_ATTR_VOLUME_ID | DIRENTRY_ATTR_DIRECTORY))) == 0;
 }
 
 bool dirEntryIsEmpty(const DirEntry* entry)
@@ -131,12 +133,12 @@ char* dirEntryAttrsToStr(uint8_t attrs)
         return str;
     }
 
-    str[0] = (attrs & DIRENTRY_ATTR_FLAG_READONLY)  ? 'R' : '-';
-    str[1] = (attrs & DIRENTRY_ATTR_FLAG_HIDDEN)    ? 'H' : '-';
-    str[2] = (attrs & DIRENTRY_ATTR_FLAG_SYSTEM)    ? 'S' : '-';
-    str[3] = (attrs & DIRENTRY_ATTR_FLAG_VOLUME_ID) ? 'V' : '-';
-    str[4] = (attrs & DIRENTRY_ATTR_FLAG_DIRECTORY) ? 'D' : '-';
-    str[5] = (attrs & DIRENTRY_ATTR_FLAG_ARCHIVE)   ? 'A' : '-';
+    str[0] = (attrs & DIRENTRY_ATTR_READONLY)  ? 'R' : '-';
+    str[1] = (attrs & DIRENTRY_ATTR_HIDDEN)    ? 'H' : '-';
+    str[2] = (attrs & DIRENTRY_ATTR_SYSTEM)    ? 'S' : '-';
+    str[3] = (attrs & DIRENTRY_ATTR_VOLUME_ID) ? 'V' : '-';
+    str[4] = (attrs & DIRENTRY_ATTR_DIRECTORY) ? 'D' : '-';
+    str[5] = (attrs & DIRENTRY_ATTR_ARCHIVE)   ? 'A' : '-';
     str[6] = 0;
     return str;
 }
@@ -145,6 +147,8 @@ char* dirEntryAttrsToStr(uint8_t attrs)
 // TODO: Allocate buffer?
 int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buffer, size_t bufferSize)
 {
+    assert(dirEntryIsDir(entry));
+
     // Don't do anything if the file is empty
     // or it is on a bad cluster
     if (dirEntryIsEmpty(entry) || clusterPtrIsBadCluster(dirEntryGetClusterPtr(entry)))
@@ -489,7 +493,7 @@ void fat32ListDir(Fat32Context* cont, uint64_t addr)
         DirEntryTime cTime = toDirEntryTime(dirEntry->entry->_creationTime);
         char* cTimeStr = dirEntryTimeToStr(&cTime);
         printf("%-11.11s  |  %50s  |  ", dirEntry->entry->fileName, dirEntry->longFilename);
-        if (dirEntry->entry->attributes & DIRENTRY_ATTR_FLAG_DIRECTORY) { printf("     <DIR>"); }
+        if (dirEntryIsDir(dirEntry->entry)) { printf("     <DIR>"); }
         else { printf("%10i", dirEntry->entry->fileSize); }
         printf("  |  %s  |  %s %s\n", attrs, cDateStr, cTimeStr);
         free(attrs);
