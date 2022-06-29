@@ -262,9 +262,69 @@ void dirIteratorEntryFree(DirIteratorEntry** entryP)
     *entryP = NULL;
 }
 
-const char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
+char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
 {
-    return (entry->longFilename[0] != 0) ? entry->longFilename : (char*)entry->entry->fileName;
+    char* fileName;
+#if 1
+    if (entry->longFilename[0] != 0)
+    {
+        fileName = calloc(strlen(entry->longFilename)+1, 1);
+        strcpy(fileName, entry->longFilename);
+    }
+    else
+#endif
+    // FIXME: Don't mess with the extension if it is a dir
+    {
+        //printf("Filename: %.*s\n", DIRENTRY_FILENAME_LEN, entry->entry->fileName);
+
+        // Count extension length
+        int extLen = 0;
+        for (int i=DIRENTRY_FILENAME_LEN-1; i >= 0; --i)
+        {
+            if (entry->entry->fileName[i] == ' ')
+                break;
+            ++extLen;
+        }
+        //printf("Extension length: %i\n", extLen);
+
+        int outLen;
+        int paddingCount = 0;
+        { // Count length without padding spaces
+            int i=DIRENTRY_FILENAME_LEN-1-extLen;
+            // Skip padding spaces
+            for (; i >= 0; --i)
+            {
+                if (entry->entry->fileName[i] != ' ')
+                {
+                    break;
+                }
+                ++paddingCount;
+            }
+            //printf("Padding: %i\n", paddingCount);
+        }
+        // If we have an extension, leave space for the dot
+        outLen = DIRENTRY_FILENAME_LEN-paddingCount+(extLen ? 1 : 0);
+
+        //printf("Output length: %i\n", outLen);
+        fileName = malloc(outLen+1);
+        // Copy string without padding spaces
+        {
+            // Copy extension
+            for (int i=0; i < extLen; ++i)
+                fileName[outLen-i-1] = entry->entry->fileName[DIRENTRY_FILENAME_LEN-1-i];
+
+            // Put dot if there is an extension
+            if (extLen)
+                fileName[outLen-extLen-1] = '.';
+
+            // Copy prefix
+            for (int i=0; i < DIRENTRY_FILENAME_LEN-paddingCount-extLen; ++i)
+                fileName[i] = entry->entry->fileName[i];
+        }
+        fileName[outLen] = 0;
+    }
+    //printf("Output: \"%s\"\n", fileName);
+    return fileName;
 }
 
 DirIterator* dirIteratorNew(uint64_t addr)
@@ -299,7 +359,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
         {
             // TODO: Works, but WTF
             const ClusterPtr clusterI = (newAddr-cont->bpb->reservedSectorCount*cont->bpb->sectorSize)/clusterSizeBytes-cont->bpb->sectorSize+1;
-            printf("End of cluster: 0x%x\n", clusterI);
+            //printf("End of cluster: 0x%x\n", clusterI);
             const ClusterPtr nextCluster = fatGetNextClusterPtr(cont, clusterI);
             assert(!clusterPtrIsNull(nextCluster));
             assert(!clusterPtrIsBadCluster(nextCluster));
@@ -312,7 +372,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             }
             else
             {
-                printf("Next cluster is 0x%x\n", nextCluster);
+                //printf("Next cluster is 0x%x\n", nextCluster);
                 newAddr = cont->rootDirAddr+(nextCluster-cont->ebpb->rootDirClusterNum)*cont->bpb->sectorsPerClusters*cont->bpb->sectorSize;
             }
         }
