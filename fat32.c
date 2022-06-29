@@ -294,17 +294,18 @@ void dirIteratorEntryFree(DirIteratorEntry** entryP)
 char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
 {
     char* fileName;
-#if 1
+    // If we have a long filename, return it
     if (entry->longFilename[0] != 0)
     {
-        fileName = calloc(strlen(entry->longFilename)+1, 1);
+        const size_t len = strlen(entry->longFilename);
+        fileName = malloc(len+1);
         strcpy(fileName, entry->longFilename);
+        fileName[len] = 0;
     }
-    else
-#endif
-    // FIXME: Don't mess with the extension if it is a dir
+    // Only remove padding when this is a file (directories don't have extensions)
+    else if (dirEntryIsFile(entry->entry))
     {
-        //chdbg("Filename: %.*s\n", DIRENTRY_FILENAME_LEN, entry->entry->fileName);
+        chdbg("Filename: %.*s\n", DIRENTRY_FILENAME_LEN, entry->entry->fileName);
 
         // Count extension length
         int extLen = 0;
@@ -329,12 +330,12 @@ char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
                 }
                 ++paddingCount;
             }
-            //chdbg("Padding: %i\n", paddingCount);
+            chdbg("Padding: %i\n", paddingCount);
         }
         // If we have an extension, leave space for the dot
         outLen = DIRENTRY_FILENAME_LEN-paddingCount+(extLen ? 1 : 0);
 
-        //chdbg("Output length: %i\n", outLen);
+        chdbg("Output length: %i\n", outLen);
         fileName = malloc(outLen+1);
         // Copy string without padding spaces
         {
@@ -352,7 +353,14 @@ char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
         }
         fileName[outLen] = 0;
     }
-    //chdbg("Output: \"%s\"\n", fileName);
+    // Directory without a long filename, return as it is
+    else
+    {
+        fileName = malloc(DIRENTRY_FILENAME_LEN+1);
+        strncpy(fileName, (const char*)entry->entry->fileName, DIRENTRY_FILENAME_LEN);
+        fileName[DIRENTRY_FILENAME_LEN] = 0;
+    }
+    chdbg("Output: \"%s\"\n", fileName);
     return fileName;
 }
 
