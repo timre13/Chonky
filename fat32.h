@@ -15,6 +15,20 @@
 
 //------------------------------------------------------------------------------
 
+/*
+ * Note: return value is not used, it's only there to match `printf()`s signature.
+ */
+typedef int (*chonkyOutFun_t)(const char*, ...);
+
+/*
+ * You can overwrite these functions to redirect or silence output.
+ */
+extern chonkyOutFun_t chout; // Normal output
+extern chonkyOutFun_t cherr; // Errors
+extern chonkyOutFun_t chdbg; // Verbose debug messages
+
+//------------------------------------------------------------------------------
+
 #define PACKED __attribute__((packed))
 
 typedef unsigned int uint;

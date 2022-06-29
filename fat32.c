@@ -4,6 +4,35 @@
  */
 
 #include "fat32.h"
+#include <stdarg.h>
+
+//------------------------------------------------------------------------------
+
+static int _chonkyErr(const char* fmt, ...)
+{
+    fprintf(stderr, "\033[1m\033[31mERR\033[m: ");
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    return 0;
+}
+
+static int _chonkyDbg(const char* fmt, ...)
+{
+    printf("\033[36mDBG\033[m: ");
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    return 0;
+}
+
+chonkyOutFun_t chout = &printf;
+chonkyOutFun_t cherr = &_chonkyErr;
+chonkyOutFun_t chdbg = &_chonkyDbg;
+
+//------------------------------------------------------------------------------
 
 static inline ulong umin(ulong a, ulong b)
 {
@@ -14,10 +43,10 @@ void printHex(unsigned char* buffer, int n)
 {
     for (int i=0; i < n; ++i)
     {
-        printf("%02x ", buffer[i]);
+        chout("%02x ", buffer[i]);
         if (i % 32 == 31)
         {
-            printf("\n");
+            chout("\n");
         }
     }
 }
@@ -62,7 +91,7 @@ uint32_t fatGetNextClusterPtr(const Fat32Context* cont, ClusterPtr current)
     //assert(fatIndex == 0); // TODO: Support multiple FATs
     //assert(entry < cont->fatSizeBytes/4);
     //printHex((uint8_t*)cont->fat+current, 4);
-    //printf("\n0x%x -> 0x%02x\n", current, cont->fat[current+0]);
+    //chdbg("\n0x%x -> 0x%02x\n", current, cont->fat[current+0]);
     return *(uint32_t*)&cont->fat[fatOffset];
 }
 
@@ -275,7 +304,7 @@ char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
 #endif
     // FIXME: Don't mess with the extension if it is a dir
     {
-        //printf("Filename: %.*s\n", DIRENTRY_FILENAME_LEN, entry->entry->fileName);
+        //chdbg("Filename: %.*s\n", DIRENTRY_FILENAME_LEN, entry->entry->fileName);
 
         // Count extension length
         int extLen = 0;
@@ -285,7 +314,7 @@ char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
                 break;
             ++extLen;
         }
-        //printf("Extension length: %i\n", extLen);
+        chdbg("Extension length: %i\n", extLen);
 
         int outLen;
         int paddingCount = 0;
@@ -300,12 +329,12 @@ char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
                 }
                 ++paddingCount;
             }
-            //printf("Padding: %i\n", paddingCount);
+            //chdbg("Padding: %i\n", paddingCount);
         }
         // If we have an extension, leave space for the dot
         outLen = DIRENTRY_FILENAME_LEN-paddingCount+(extLen ? 1 : 0);
 
-        //printf("Output length: %i\n", outLen);
+        //chdbg("Output length: %i\n", outLen);
         fileName = malloc(outLen+1);
         // Copy string without padding spaces
         {
@@ -323,7 +352,7 @@ char* dirIteratorEntryGetFileName(DirIteratorEntry* entry)
         }
         fileName[outLen] = 0;
     }
-    //printf("Output: \"%s\"\n", fileName);
+    //chdbg("Output: \"%s\"\n", fileName);
     return fileName;
 }
 
@@ -350,7 +379,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
     {
         uint64_t newAddr = it->_address+sizeof(DirEntry);
 
-        //printf("Reading dir. entry at 0x%lx\n", it->_address);
+        //chdbg("Reading dir. entry at 0x%lx\n", it->_address);
         fseek(cont->file, it->_address, SEEK_SET);
         fread(directory, sizeof(DirEntry), 1, cont->file);
 
@@ -359,27 +388,27 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
         {
             // TODO: Works, but WTF
             const ClusterPtr clusterI = (newAddr-cont->bpb->reservedSectorCount*cont->bpb->sectorSize)/clusterSizeBytes-cont->bpb->sectorSize+1;
-            //printf("End of cluster: 0x%x\n", clusterI);
+            //chdbg("End of cluster: 0x%x\n", clusterI);
             const ClusterPtr nextCluster = fatGetNextClusterPtr(cont, clusterI);
             assert(!clusterPtrIsNull(nextCluster));
             assert(!clusterPtrIsBadCluster(nextCluster));
             if (clusterPtrIsLastCluster(nextCluster))
             {
-                printf("End of cluster chain (next: 0x%x)\n", nextCluster);
+                chdbg("End of cluster chain (next: 0x%x)\n", nextCluster);
                 it->_address = 0;
                 free(directory);
                 return NULL;
             }
             else
             {
-                //printf("Next cluster is 0x%x\n", nextCluster);
+                //chdbg("Next cluster is 0x%x\n", nextCluster);
                 newAddr = cont->rootDirAddr+(nextCluster-cont->ebpb->rootDirClusterNum)*cont->bpb->sectorsPerClusters*cont->bpb->sectorSize;
             }
         }
 
         if (directory->fileName[0] == 0) // End of directory
         {
-            printf("End of dir\n");
+            chdbg("End of dir\n");
             it->_address = 0;
             free(directory);
             return NULL;
@@ -387,7 +416,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
 
         if (directory->fileName[0] == 0xe5) // Unused entry, skip
         {
-            printf("Unused entry\n");
+            chdbg("Unused entry\n");
             continue;
         }
 
@@ -396,8 +425,8 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             const LfeEntry* lfeEntry = (LfeEntry*)directory;
             char* lfeVal = lfeEntryGetNameASCII(lfeEntry);
             strncpy(it->_longFilename+((lfeEntry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
-            //printf("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
-            //printf("LFE Entry\n");
+            //chdbg("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
+            //chdbg("LFE Entry\n");
             it->_longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
             free(lfeVal);
         }
@@ -444,7 +473,7 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     context->file = fopen(devFilePath, "r");
     if (!context->file)
     {
-        fprintf(stderr, "Failed to open device: %s: %s\n", devFilePath, strerror(errno));
+        cherr("Failed to open device: %s: %s\n", devFilePath, strerror(errno));
         free(context);
         return NULL;
     }
@@ -460,7 +489,7 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     context->fat = malloc(context->fatSizeBytes);
     assert(context->fat);
     const uint fatStart = context->bpb->reservedSectorCount*context->bpb->sectorSize;
-    printf("FAT start: 0x%x\n", fatStart);
+    chout("FAT start: 0x%x\n", fatStart);
     fseek(context->file, fatStart, SEEK_SET);
     //fread(context->fat, sizeof(uint32_t), context->fatSizeBytes/sizeof(uint32_t), context->file);
     fread(context->fat, 1, context->fatSizeBytes, context->file);
@@ -492,52 +521,52 @@ void fat32PrintInfo(Fat32Context* cont)
 {
     fseek(cont->file, 0, SEEK_END);
     const long diskSize = ftell(cont->file);
-    printf("Disk size:              %li bytes = %fKb = %fMb = %fGb\n",
+    chout("Disk size:              %li bytes = %fKb = %fMb = %fGb\n",
             diskSize, diskSize/1024.f, diskSize/1024.f/1024.f, diskSize/1024.f/1024.f/1024.f);
-    putchar('\n');
+    chout("\n");
 
-    printf("OEM:                    %.*s\n", BPB_OEM_LEN, cont->bpb->oemIdentifier);
-    printf("Bytes/sector:           %u\n",   cont->bpb->sectorSize);
-    printf("Sectors/cluster:        %u\n",   cont->bpb->sectorsPerClusters);
-    printf("Reserved sectors:       %u\n",   cont->bpb->reservedSectorCount);
-    printf("Number of FATs:         %u\n",   cont->bpb->fatCount);
-    printf("Number of dir entries:  %u\n",   cont->bpb->dirEntryCount);
-    printf("Media type:             0x%x\n", cont->bpb->mediaType);
-    printf("Sectors/track:          %u\n",   cont->bpb->sectorsPerTrack);
-    printf("Heads:                  %u\n",   cont->bpb->headCount);
-    printf("Hidden sectors:         %u\n",   cont->bpb->hiddenSectCount);
-    printf("Sector count:           %u\n",   BPBGetSectorCount(cont->bpb));
-    putchar('\n');
+    chout("OEM:                    %.*s\n", BPB_OEM_LEN, cont->bpb->oemIdentifier);
+    chout("Bytes/sector:           %u\n",   cont->bpb->sectorSize);
+    chout("Sectors/cluster:        %u\n",   cont->bpb->sectorsPerClusters);
+    chout("Reserved sectors:       %u\n",   cont->bpb->reservedSectorCount);
+    chout("Number of FATs:         %u\n",   cont->bpb->fatCount);
+    chout("Number of dir entries:  %u\n",   cont->bpb->dirEntryCount);
+    chout("Media type:             0x%x\n", cont->bpb->mediaType);
+    chout("Sectors/track:          %u\n",   cont->bpb->sectorsPerTrack);
+    chout("Heads:                  %u\n",   cont->bpb->headCount);
+    chout("Hidden sectors:         %u\n",   cont->bpb->hiddenSectCount);
+    chout("Sector count:           %u\n",   BPBGetSectorCount(cont->bpb));
+    chout("\n");
 
-    printf("Sectors/FAT:            %u\n",   cont->ebpb->sectorsPerFat);
-    printf("Flags:                  0x%x\n", cont->ebpb->flags);
-    printf("FAT version:            0x%x\n", cont->ebpb->fatVersion);
-    printf("Root dir cluster:       %u\n",   cont->ebpb->rootDirClusterNum);
-    printf("FSInfo sector:          %u\n",   cont->ebpb->fsInfoSectorNum);
-    printf("Backup boot sector:     %u\n",   cont->ebpb->backupSectorNum);
-    printf("Drive number:           0x%x\n", cont->ebpb->driveNum);
-    printf("NT Flags:               0x%x\n", cont->ebpb->ntFlags);
-    printf("Signature:              0x%u\n", cont->ebpb->signature);
-    printf("Serial number:          0x%x\n", cont->ebpb->serialNum);
-    printf("Label:                  %.*s\n", EBPB_LABEL_LEN, cont->ebpb->label);
-    printf("System ID:              %.*s\n", EBPB_SYS_ID_LEN, cont->ebpb->systemId);
-    putchar('\n');
+    chout("Sectors/FAT:            %u\n",   cont->ebpb->sectorsPerFat);
+    chout("Flags:                  0x%x\n", cont->ebpb->flags);
+    chout("FAT version:            0x%x\n", cont->ebpb->fatVersion);
+    chout("Root dir cluster:       %u\n",   cont->ebpb->rootDirClusterNum);
+    chout("FSInfo sector:          %u\n",   cont->ebpb->fsInfoSectorNum);
+    chout("Backup boot sector:     %u\n",   cont->ebpb->backupSectorNum);
+    chout("Drive number:           0x%x\n", cont->ebpb->driveNum);
+    chout("NT Flags:               0x%x\n", cont->ebpb->ntFlags);
+    chout("Signature:              0x%u\n", cont->ebpb->signature);
+    chout("Serial number:          0x%x\n", cont->ebpb->serialNum);
+    chout("Label:                  %.*s\n", EBPB_LABEL_LEN, cont->ebpb->label);
+    chout("System ID:              %.*s\n", EBPB_SYS_ID_LEN, cont->ebpb->systemId);
+    chout("\n");
 
     uint16_t mbrSignature;
     fseek(cont->file, 510, SEEK_SET);
     fread(&mbrSignature, 2, 1, cont->file);
-    printf("MBR Signature:          0x%x (%s)\n", mbrSignature, (mbrSignature == 0xaa55 ? "OK" : "BAD"));
-    putchar('\n');
+    chout("MBR Signature:          0x%x (%s)\n", mbrSignature, (mbrSignature == 0xaa55 ? "OK" : "BAD"));
+    chout("\n");
 }
 
 void fat32ListDir(Fat32Context* cont, uint64_t addr)
 {
-    printf("Listing of 0x%lx:\n", addr);
+    chout("Listing of 0x%lx:\n", addr);
     // Print table heading
-    printf("%-11.11s  |  %50s  |  %10s  |  %s  |  %s\n",
+    chout("%-11.11s  |  %50s  |  %10s  |  %s  |  %s\n",
             "FILE NAME", "LONG FILE NAME", "SIZE", "ATTRS.", "CREAT. DATE & TIME");
-    for (int i=0; i < 116; ++i) putchar((i == 13 || i == 68 || i == 83 || i == 94) ? '|' : '-');
-    putchar('\n');
+    for (int i=0; i < 116; ++i) chout((i == 13 || i == 68 || i == 83 || i == 94) ? "|" : "-");
+    chout("\n");
 
     // List directory
     DirIterator* it = dirIteratorNew(addr);
@@ -553,10 +582,10 @@ void fat32ListDir(Fat32Context* cont, uint64_t addr)
         char* cDateStr = dirEntryDateToStr(&cDate);
         DirEntryTime cTime = toDirEntryTime(dirEntry->entry->_creationTime);
         char* cTimeStr = dirEntryTimeToStr(&cTime);
-        printf("%-11.11s  |  %50s  |  ", dirEntry->entry->fileName, dirEntry->longFilename);
-        if (dirEntryIsDir(dirEntry->entry)) { printf("     <DIR>"); }
-        else { printf("%10i", dirEntry->entry->fileSize); }
-        printf("  |  %s  |  %s %s\n", attrs, cDateStr, cTimeStr);
+        chout("%-11.11s  |  %50s  |  ", dirEntry->entry->fileName, dirEntry->longFilename);
+        if (dirEntryIsDir(dirEntry->entry)) { chout("     <DIR>"); }
+        else { chout("%10i", dirEntry->entry->fileSize); }
+        chout("  |  %s  |  %s %s\n", attrs, cDateStr, cTimeStr);
         free(attrs);
         free(cDateStr);
         free(cTimeStr);
@@ -564,7 +593,7 @@ void fat32ListDir(Fat32Context* cont, uint64_t addr)
         ++fileCount;
     }
     dirIteratorFree(&it);
-    printf("%i items in directory\n", fileCount);
+    chout("%i items in directory\n", fileCount);
 }
 
 DirIteratorEntry* fat32Find(Fat32Context* cont, uint64_t addr, const char* fileName)
