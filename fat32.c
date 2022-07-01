@@ -455,8 +455,10 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             DirIteratorEntry* dirItEntry = malloc(sizeof(DirIteratorEntry));
             assert(dirItEntry);
             dirItEntry->entry = directory;
+            // TODO: Calculate checksum of long filename and validate
+            //       See: Micro$oft Extensible Firmware Initiative FAT32 File System Specification, page 28
             dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
-            dirItEntry->address = it->_address;
+            dirItEntry->address = newAddr;
             strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
             memset(it->_longFilename, 0, LFE_FULL_NAME_LEN+1);
             it->_address = newAddr;
