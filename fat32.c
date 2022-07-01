@@ -188,7 +188,7 @@ char* dirEntryAttrsToStr(uint8_t attrs)
 // TODO: Allocate buffer?
 int dirEntryReadFileData(Fat32Context* cont, const DirEntry* entry, uint8_t* buffer, size_t bufferSize)
 {
-    assert(dirEntryIsDir(entry));
+    assert(dirEntryIsFile(entry));
 
     // Don't do anything if the file is empty
     // or it is on a bad cluster
