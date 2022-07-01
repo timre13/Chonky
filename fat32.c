@@ -8,6 +8,16 @@
 
 //------------------------------------------------------------------------------
 
+static int _chonkyOut(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    fflush(stdout);
+    return 0;
+}
+
 static int _chonkyErr(const char* fmt, ...)
 {
     fprintf(stderr, "\033[1m\033[31mERR\033[m: ");
@@ -15,6 +25,7 @@ static int _chonkyErr(const char* fmt, ...)
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
+    fflush(stderr);
     return 0;
 }
 
@@ -25,10 +36,11 @@ static int _chonkyDbg(const char* fmt, ...)
     va_start(args, fmt);
     vprintf(fmt, args);
     va_end(args);
+    fflush(stdout);
     return 0;
 }
 
-chonkyOutFun_t chout = &printf;
+chonkyOutFun_t chout = &_chonkyOut;
 chonkyOutFun_t cherr = &_chonkyErr;
 chonkyOutFun_t chdbg = &_chonkyDbg;
 
