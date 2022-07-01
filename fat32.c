@@ -13,7 +13,7 @@ static int _chonkyErr(const char* fmt, ...)
     fprintf(stderr, "\033[1m\033[31mERR\033[m: ");
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    vfprintf(stderr, fmt, args);
     va_end(args);
     return 0;
 }
