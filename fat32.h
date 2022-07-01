@@ -65,7 +65,8 @@ void fat32ContextFree(Fat32Context** contextP);
 uint32_t fat32GetFirstSectorOfCluster(const Fat32Context* cont, uint32_t cluster);
 void fat32PrintInfo(Fat32Context* cont);
 void fat32ListDir(Fat32Context* cont, uint64_t addr);
-DirIteratorEntry* fat32Find(Fat32Context* cont, uint64_t addr, const char* fileName);
+DirIteratorEntry* fat32FindInDir(Fat32Context* cont, uint64_t addr, const char* toFind);
+DirIteratorEntry* fat32OpenFile(Fat32Context* cont, const char* path);
 
 //------------------------------------------------------------------------------
 
@@ -228,11 +229,12 @@ typedef struct DirIteratorEntry
 {
     DirEntry* entry;
     char* longFilename;
+    // Address of the entry itself, not where it points to
     uint64_t address;
 } DirIteratorEntry;
 
 void dirIteratorEntryFree(DirIteratorEntry** entryP);
-const char* dirIteratorEntryGetFileName(DirIteratorEntry* entry);
+char* dirIteratorEntryGetFileName(DirIteratorEntry* entry);
 
 typedef struct DirIterator
 {

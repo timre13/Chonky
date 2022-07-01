@@ -5,6 +5,9 @@
 
 #include "fat32.h"
 #include <stdarg.h>
+#include <ctype.h>
+
+#define PATH_SEP '/'
 
 //------------------------------------------------------------------------------
 
@@ -618,19 +621,95 @@ void fat32ListDir(Fat32Context* cont, uint64_t addr)
     chout("%i items in directory\n", fileCount);
 }
 
-DirIteratorEntry* fat32Find(Fat32Context* cont, uint64_t addr, const char* fileName)
+static char* strtToUpper(const char* str)
+{
+    const size_t len = strlen(str);
+    char* output = malloc(len+1);
+    for (size_t i=0; i <= len; ++i)
+        output[i] = str[i];
+    return output;
+}
+
+DirIteratorEntry* fat32FindInDir(Fat32Context* cont, uint64_t addr, const char* toFind)
 {
     DirIterator* it = dirIteratorNew(addr);
-    DirIteratorEntry* result;
+    char* fileName = strtToUpper(toFind);
     while (true)
     {
-        result = dirIteratorNext(cont, it);
-        if (result == NULL || strcmp(dirIteratorEntryGetFileName(result), fileName) == 0)
+        DirIteratorEntry* result = dirIteratorNext(cont, it);
+        if (result == NULL)
         {
-            break;
+            chdbg("End of dir\n");
+            free(fileName);
+            dirIteratorFree(&it);
+            return NULL;
         }
+
+        char* entryFileName = dirIteratorEntryGetFileName(result);
+        chdbg("Comparing entry (parent: 0x%lx, addr: 0x%lx, name: \"%s\") with: \"%s\" -> ",
+                addr, dirEntryGetDataAddress(cont, result->entry), entryFileName, fileName);
+
+        if (strcmp(entryFileName, fileName) == 0)
+        {
+            chdbg("Match\n");
+            free(fileName);
+            free(entryFileName);
+            dirIteratorFree(&it);
+            return result;
+        }
+        chdbg("Does not match\n");
+
         dirIteratorEntryFree(&result);
+        free(entryFileName);
     }
-    dirIteratorFree(&it);
-    return result;
+
+    assert(false); // Unreachable
+    return NULL;
+}
+
+static size_t findChar(const char* str, char c)
+{
+    const size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i)
+    {
+        if (str[i] == c)
+            return i; // Found
+    }
+    return len; // Not found, end reached
+}
+
+static DirIteratorEntry* findPath(Fat32Context* cont, const char* path, uint64_t parentAddr)
+{
+    const size_t pathLen = strlen(path);
+    const size_t subpathLen = findChar(path, PATH_SEP);
+    char* subpath = malloc(subpathLen+1);
+    strncpy(subpath, path, subpathLen);
+    subpath[subpathLen] = 0;
+
+    chdbg("Looking up path: %s\n", path);
+    chdbg("Looking up subpath: %s\n", subpath);
+
+    DirIteratorEntry* entry = fat32FindInDir(cont, parentAddr, subpath);
+    if (entry == NULL)
+    {
+        chdbg("Subpath not found: %s\n", subpath);
+        free(subpath);
+        return NULL;
+    }
+    const uint64_t addr = dirEntryGetDataAddress(cont, entry->entry);
+
+    free(subpath);
+
+    const size_t nextSep = findChar(path, PATH_SEP);
+    if (nextSep == pathLen) // If end of path
+    {
+        return entry; // The current entry is the result
+    }
+    dirIteratorEntryFree(&entry);
+    return findPath(cont, path+nextSep+1, addr);
+}
+
+DirIteratorEntry* fat32OpenFile(Fat32Context* cont, const char* path)
+{
+    return findPath(cont, path, cont->rootDirAddr);
 }
