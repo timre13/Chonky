@@ -56,14 +56,30 @@ static inline ulong umin(ulong a, ulong b)
 
 void printHex(unsigned char* buffer, int n)
 {
-    for (int i=0; i < n; ++i)
+    for (int i=0; i < n/2; ++i)
     {
-        chout("%02x ", buffer[i]);
-        if (i % 32 == 31)
+        if (i*2 % 16 == 0)
+        {
+            if (i)
+                chout("\n");
+            chout("%07x ", i*2);
+        }
+        chout("%02x", buffer[i*2+1]);
+        chout("%02x", buffer[i*2]);
+        if (i*2 % 16 != 14)
+            chout(" ");
+    }
+
+    if (n % 2 == 1)
+    {
+        if (n % 16 == 0)
         {
             chout("\n");
+            chout("%07x", n);
         }
+        chout("00%02x", buffer[n-1]);
     }
+    chout("\n");
 }
 
 //------------------------------------------------------------------------------
