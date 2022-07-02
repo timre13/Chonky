@@ -46,18 +46,20 @@ void printHex(unsigned char* buffer, int n);
 
 typedef struct BPB BPB;
 typedef struct EBPB EBPB;
+typedef struct FSInfo FSInfo;
 typedef struct DirIteratorEntry DirIteratorEntry;
 
 typedef struct Fat32Context
 {
-    FILE* file;
-    BPB* bpb;
-    EBPB* ebpb;
-    ulong fatSizeBytes;
-    uint8_t* fat;
+    FILE*       file;
+    BPB*        bpb;
+    EBPB*       ebpb;
+    FSInfo*     fsinfo;
+    ulong       fatSizeBytes;
+    uint8_t*    fat;
     // The first sector where dir entries can be stored
-    uint32_t firstDataSector;
-    uint64_t rootDirAddr;
+    uint32_t    firstDataSector;
+    uint64_t    rootDirAddr;
 } Fat32Context;
 
 Fat32Context* fat32ContextNew(const char* devFilePath);
@@ -117,6 +119,24 @@ typedef struct EBPB
     /* Boot code */
     /* MBR signature (0xAA55) */
 } PACKED EBPB;
+
+//------------------------------------------------------------------------------
+
+#define FSINFO_LEAD_SIG     0x41615252
+#define FSINFO_SIG          0x61417272
+#define FSINFO_TRAIL_SIG    0xaa550000
+#define FSINFO_NOT_KNOWN_FREE_CLUST_CNT  0xffffffff
+#define FSINFO_NOT_KNOWN_NEXT_FREE_CLUST 0xffffffff
+typedef struct FSInfo
+{
+    uint32_t    leadSig;
+    uint8_t     _reserved0[480];
+    uint32_t    signature;
+    uint32_t    freeCount;
+    uint32_t    nextFree;
+    uint8_t     _reserved1[12];
+    uint32_t    trailSig;
+} PACKED FSInfo;
 
 //------------------------------------------------------------------------------
 

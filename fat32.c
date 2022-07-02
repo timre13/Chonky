@@ -526,10 +526,16 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     fseek(context->file, sizeof(BPB), SEEK_SET);
     fread(context->ebpb, sizeof(EBPB), 1, context->file);
 
+    context->fsinfo = malloc(sizeof(FSInfo));
+    const ulong fsinfoStart = context->ebpb->fsInfoSectorNum*context->bpb->sectorSize;
+    chout("FSInfo start: 0x%x\n", fsinfoStart);
+    fseek(context->file, fsinfoStart, SEEK_SET);
+    fread(context->fsinfo, sizeof(FSInfo), 1, context->file);
+
     context->fatSizeBytes = context->ebpb->sectorsPerFat*context->bpb->sectorSize;
     context->fat = malloc(context->fatSizeBytes);
     assert(context->fat);
-    const uint fatStart = context->bpb->reservedSectorCount*context->bpb->sectorSize;
+    const ulong fatStart = context->bpb->reservedSectorCount*context->bpb->sectorSize;
     chout("FAT start: 0x%x\n", fatStart);
     fseek(context->file, fatStart, SEEK_SET);
     //fread(context->fat, sizeof(uint32_t), context->fatSizeBytes/sizeof(uint32_t), context->file);
@@ -549,6 +555,7 @@ void fat32ContextFree(Fat32Context** contextP)
     free((*contextP)->bpb);
     free((*contextP)->ebpb);
     free((*contextP)->fat);
+    free((*contextP)->fsinfo);
     free(*contextP);
     *contextP = NULL;
 }
@@ -566,6 +573,7 @@ void fat32PrintInfo(Fat32Context* cont)
             diskSize, diskSize/1024.f, diskSize/1024.f/1024.f, diskSize/1024.f/1024.f/1024.f);
     chout("\n");
 
+    chout("----- BPB -----\n");
     chout("OEM:                    %.*s\n", BPB_OEM_LEN, cont->bpb->oemIdentifier);
     chout("Bytes/sector:           %u\n",   cont->bpb->sectorSize);
     chout("Sectors/cluster:        %u\n",   cont->bpb->sectorsPerClusters);
@@ -579,6 +587,7 @@ void fat32PrintInfo(Fat32Context* cont)
     chout("Sector count:           %u\n",   BPBGetSectorCount(cont->bpb));
     chout("\n");
 
+    chout("----- EBPB -----\n");
     chout("Sectors/FAT:            %u\n",   cont->ebpb->sectorsPerFat);
     chout("Flags:                  0x%x\n", cont->ebpb->flags);
     chout("FAT version:            0x%x\n", cont->ebpb->fatVersion);
@@ -592,6 +601,19 @@ void fat32PrintInfo(Fat32Context* cont)
     chout("Serial number:          0x%x\n", cont->ebpb->serialNum);
     chout("Label:                  %.*s\n", EBPB_LABEL_LEN, cont->ebpb->label);
     chout("System ID:              %.*s\n", EBPB_SYS_ID_LEN, cont->ebpb->systemId);
+    chout("\n");
+
+    chout("----- FSInfo -----\n");
+    chout("Lead signature:          0x%x (%s)\n", cont->fsinfo->leadSig,
+            (cont->fsinfo->leadSig == FSINFO_LEAD_SIG ? "OK" : "BAD"));
+    chout("Signature:               0x%x (%s)\n", cont->fsinfo->signature,
+            (cont->fsinfo->signature == FSINFO_SIG ? "OK" : "BAD"));
+    chout("Free cluster count:      %u %s\n",   cont->fsinfo->freeCount,
+            (cont->fsinfo->freeCount == FSINFO_NOT_KNOWN_FREE_CLUST_CNT ? "(Not known)" : ""));
+    chout("Next free cluster:       0x%x %s\n", cont->fsinfo->nextFree,
+            (cont->fsinfo->nextFree == FSINFO_NOT_KNOWN_NEXT_FREE_CLUST ? "(Not known)" : ""));
+    chout("Trail signature:         0x%x (%s)\n", cont->fsinfo->trailSig,
+            (cont->fsinfo->trailSig == FSINFO_TRAIL_SIG ? "OK" : "BAD"));
     chout("\n");
 
     uint16_t mbrSignature;
