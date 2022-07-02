@@ -110,7 +110,7 @@ typedef struct EBPB
     uint8_t     _reserved0[12];
     uint8_t     driveNum;
     uint8_t     ntFlags;
-    uint8_t     signature;
+    uint8_t     signature; // Must be 0x28 or 0x29
     uint32_t    serialNum;
     uint8_t     label[EBPB_LABEL_LEN];
     uint8_t     systemId[EBPB_SYS_ID_LEN];

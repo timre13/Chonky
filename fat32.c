@@ -587,7 +587,8 @@ void fat32PrintInfo(Fat32Context* cont)
     chout("Backup boot sector:     %u\n",   cont->ebpb->backupSectorNum);
     chout("Drive number:           0x%x\n", cont->ebpb->driveNum);
     chout("NT Flags:               0x%x\n", cont->ebpb->ntFlags);
-    chout("Signature:              0x%u\n", cont->ebpb->signature);
+    chout("Signature:              0x%x (%s)\n", cont->ebpb->signature,
+            (cont->ebpb->signature == 0x28 || cont->ebpb->signature == 0x29 ? "OK" : "BAD"));
     chout("Serial number:          0x%x\n", cont->ebpb->serialNum);
     chout("Label:                  %.*s\n", EBPB_LABEL_LEN, cont->ebpb->label);
     chout("System ID:              %.*s\n", EBPB_SYS_ID_LEN, cont->ebpb->systemId);
