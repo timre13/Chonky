@@ -401,7 +401,16 @@ DirIterator* dirIteratorNew(uint64_t addr)
     it->_initAddr = addr;
     it->_address = addr;
     it->_longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
+    memset(it->_lfeChecksums, 0, 16);
     return it;
+}
+
+static uint8_t calcShortNameChecksum(uint8_t name[DIRENTRY_FILENAME_LEN])
+{
+    uint8_t sum = 0;
+    for (int i=0; i < DIRENTRY_FILENAME_LEN; ++i)
+        sum = ((sum & 1) ? 0x80 : 0) + (sum >> 1) + name[i];
+    return sum;
 }
 
 DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
@@ -418,7 +427,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
     {
         uint64_t newAddr = it->_address+sizeof(DirEntry);
 
-        //chdbg("Reading dir. entry at 0x%lx\n", it->_address);
+        chdbg("Reading dir. entry at 0x%lx\n", it->_address);
         fseek(cont->file, it->_address, SEEK_SET);
         fread(directory, sizeof(DirEntry), 1, cont->file);
 
@@ -427,7 +436,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
         {
             // TODO: Works, but WTF
             const ClusterPtr clusterI = (newAddr-cont->bpb->reservedSectorCount*cont->bpb->sectorSize)/clusterSizeBytes-cont->bpb->sectorSize+1;
-            //chdbg("End of cluster: 0x%x\n", clusterI);
+            chdbg("End of cluster: 0x%x\n", clusterI);
             const ClusterPtr nextCluster = fatGetNextClusterPtr(cont, clusterI);
             assert(!clusterPtrIsNull(nextCluster));
             assert(!clusterPtrIsBadCluster(nextCluster));
@@ -440,7 +449,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             }
             else
             {
-                //chdbg("Next cluster is 0x%x\n", nextCluster);
+                chdbg("Next cluster is 0x%x\n", nextCluster);
                 newAddr = cont->rootDirAddr+(nextCluster-cont->ebpb->rootDirClusterNum)*cont->bpb->sectorsPerClusters*cont->bpb->sectorSize;
             }
         }
@@ -463,23 +472,59 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
         {
             const LfeEntry* lfeEntry = (LfeEntry*)directory;
             char* lfeVal = lfeEntryGetNameASCII(lfeEntry);
-            strncpy(it->_longFilename+((lfeEntry->nameStrIndex&0x0f)-1)*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
-            //chdbg("LFE entry: %s (fragment index: %i)\n", lfeVal, ((entry->nameStrIndex&0x0f)-1)*13);
-            //chdbg("LFE Entry\n");
-            it->_longFilename[LFE_FULL_NAME_LEN] = 0; // Ensure null terminator
+            const size_t fragI = (lfeEntry->nameStrIndex&0x0f)-1;
+
+            chdbg("LFE entry: %s (fragment index: %i, checksum: 0x%x)\n",
+                    lfeVal, fragI, lfeEntry->checksum);
+
+            if (it->_lfeChecksums[fragI])
+            {
+                cherr("Duplicate LFE entry");
+                assert(false);
+            }
+
+            it->_lfeChecksums[fragI] = lfeEntry->checksum;
+            strncpy(it->_longFilename+fragI*LFE_ENTRY_NAME_LEN, lfeVal, LFE_ENTRY_NAME_LEN);
+            assert(it->_longFilename[LFE_FULL_NAME_LEN] == 0);
             free(lfeVal);
         }
         else // Regular directory entry
         {
+            chdbg("Regular directory entry\n");
             DirIteratorEntry* dirItEntry = malloc(sizeof(DirIteratorEntry));
             assert(dirItEntry);
             dirItEntry->entry = directory;
-            // TODO: Calculate checksum of long filename and validate
-            //       See: Micro$oft Extensible Firmware Initiative FAT32 File System Specification, page 28
-            dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
             dirItEntry->address = newAddr;
-            strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
+            dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
+
+            // Verify if the LFE entries have the correct checksum
+            const uint8_t calcedChecksum = calcShortNameChecksum(dirItEntry->entry->fileName);
+            bool lfeMismatch = false;
+            for (int i=0; i < 16; ++i)
+            {
+                const uint8_t checksum = it->_lfeChecksums[i];
+                if (checksum && checksum != calcedChecksum)
+                {
+                    lfeMismatch = true;
+                    chdbg("LFE checksum mismatch (expected=0x%x, found=0x%x), "
+                            "orphan LFE entry (index=%i) of file '%.*s'\n",
+                            calcedChecksum, checksum,
+                            i, DIRENTRY_FILENAME_LEN, directory->fileName);
+                    break;
+                }
+            }
+
+            // Throw away long filename on checksum mismatch
+            if (lfeMismatch)
+            {
+                dirItEntry->longFilename[0] = 0;
+            }
+            else
+            {
+                strncpy(dirItEntry->longFilename, it->_longFilename, LFE_FULL_NAME_LEN);
+            }
             memset(it->_longFilename, 0, LFE_FULL_NAME_LEN+1);
+            memset(it->_lfeChecksums, 0, 16);
             it->_address = newAddr;
             return dirItEntry;
         }

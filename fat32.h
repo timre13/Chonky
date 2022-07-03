@@ -261,6 +261,7 @@ typedef struct DirIterator
     uint64_t _address;
     uint64_t _initAddr;
     char* _longFilename;
+    uint8_t _lfeChecksums[16];
 } DirIterator;
 
 DirIterator* dirIteratorNew(uint64_t addr);
