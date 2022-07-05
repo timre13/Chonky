@@ -494,7 +494,7 @@ DirIteratorEntry* dirIteratorNext(Fat32Context* cont, DirIterator* it)
             DirIteratorEntry* dirItEntry = malloc(sizeof(DirIteratorEntry));
             assert(dirItEntry);
             dirItEntry->entry = directory;
-            dirItEntry->address = newAddr;
+            dirItEntry->address = it->_address;
             dirItEntry->longFilename = calloc(LFE_FULL_NAME_LEN+1, 1);
 
             // Verify if the LFE entries have the correct checksum
