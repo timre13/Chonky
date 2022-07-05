@@ -52,18 +52,31 @@ typedef struct DirIteratorEntry DirIteratorEntry;
 typedef struct Fat32Context
 {
     FILE*       file;
+
+    //------ Loaded structures and modification flags ------
+
     BPB*        bpb;
+    bool        isBpbModified;
+
     EBPB*       ebpb;
+    bool        isEbpbModified;
+
     FSInfo*     fsinfo;
-    ulong       fatSizeBytes;
+    bool        isFsinfoModified;
+
     uint8_t*    fat;
-    // The first sector where dir entries can be stored
-    uint32_t    firstDataSector;
+    ulong       fatSizeBytes;
+    bool        isFatModified;
+
+    //----------------- Calculated values ------------------
+
+    uint32_t    firstDataSector; // The first sector where dir entries can be stored
     uint64_t    rootDirAddr;
 } Fat32Context;
 
 Fat32Context* fat32ContextNew(const char* devFilePath);
-void fat32ContextFree(Fat32Context** contextP);
+void fat32ContextCloseAndFree(Fat32Context** contextP);
+
 uint32_t fat32GetFirstSectorOfCluster(const Fat32Context* cont, uint32_t cluster);
 void fat32PrintInfo(Fat32Context* cont);
 void fat32ListDir(Fat32Context* cont, uint64_t addr);

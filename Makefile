@@ -16,6 +16,10 @@ test.img:
 test: chonky test.img
 	./chonky test.img
 
+check-img:
+	/usr/sbin/dosfsck -bnU test.img
+	/usr/sbin/fatlabel test.img
+
 clean:
 	rm chonky
 

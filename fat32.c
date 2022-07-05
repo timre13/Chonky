@@ -556,7 +556,7 @@ void dirIteratorFree(DirIterator** itP)
 Fat32Context* fat32ContextNew(const char* devFilePath)
 {
     Fat32Context* context = malloc(sizeof(Fat32Context));
-    context->file = fopen(devFilePath, "r");
+    context->file = fopen(devFilePath, "rb+");
     if (!context->file)
     {
         cherr("Failed to open device: %s: %s\n", devFilePath, strerror(errno));
@@ -566,16 +566,19 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     context->bpb = malloc(sizeof(BPB));
     fseek(context->file, 0, SEEK_SET);
     fread(context->bpb, sizeof(BPB), 1, context->file);
+    context->isBpbModified = false;
 
     context->ebpb = malloc(sizeof(EBPB));
     fseek(context->file, sizeof(BPB), SEEK_SET);
     fread(context->ebpb, sizeof(EBPB), 1, context->file);
+    context->isEbpbModified = false;
 
     context->fsinfo = malloc(sizeof(FSInfo));
     const ulong fsinfoStart = context->ebpb->fsInfoSectorNum*context->bpb->sectorSize;
     chout("FSInfo start: 0x%x\n", fsinfoStart);
     fseek(context->file, fsinfoStart, SEEK_SET);
     fread(context->fsinfo, sizeof(FSInfo), 1, context->file);
+    context->isFsinfoModified = false;
 
     context->fatSizeBytes = context->ebpb->sectorsPerFat*context->bpb->sectorSize;
     context->fat = malloc(context->fatSizeBytes);
@@ -585,6 +588,7 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     fseek(context->file, fatStart, SEEK_SET);
     //fread(context->fat, sizeof(uint32_t), context->fatSizeBytes/sizeof(uint32_t), context->file);
     fread(context->fat, 1, context->fatSizeBytes, context->file);
+    context->isFatModified = false;
 
     context->firstDataSector =
         context->bpb->reservedSectorCount
@@ -594,14 +598,73 @@ Fat32Context* fat32ContextNew(const char* devFilePath)
     return context;
 }
 
-void fat32ContextFree(Fat32Context** contextP)
+void fat32ContextCloseAndFree(Fat32Context** contextP)
 {
-    fclose((*contextP)->file);
-    free((*contextP)->bpb);
-    free((*contextP)->ebpb);
-    free((*contextP)->fat);
-    free((*contextP)->fsinfo);
-    free(*contextP);
+    Fat32Context* context = *contextP;
+    const ulong backupOffs = context->ebpb->backupSectorNum*context->bpb->sectorSize;
+
+    if (context->isBpbModified)
+    {
+        ulong pos = 0;
+        chdbg("Writing BPB to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->bpb, sizeof(BPB), 1, context->file);
+
+        // Write to backup sector
+        pos += backupOffs;
+        chdbg("Writing backup BPB to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->bpb, sizeof(BPB), 1, context->file);
+    }
+
+    if (context->isEbpbModified)
+    {
+        ulong pos = sizeof(BPB);
+        chdbg("Writing EBPB to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->ebpb, sizeof(EBPB), 1, context->file);
+
+        // Write to backup sector
+        pos += backupOffs;
+        chdbg("Writing backup EBPB to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->ebpb, sizeof(EBPB), 1, context->file);
+    }
+
+    if (context->isFsinfoModified)
+    {
+        ulong pos = context->ebpb->fsInfoSectorNum*context->bpb->sectorSize;
+        chdbg("Writing FsInfo to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fread(context->fsinfo, sizeof(FSInfo), 1, context->file);
+
+        // Write to backup sector
+        pos += backupOffs;
+        chdbg("Writing backup FsInfo to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->fsinfo, sizeof(FSInfo), 1, context->file);
+    }
+
+    if (context->isFatModified)
+    {
+        ulong pos = context->bpb->reservedSectorCount*context->bpb->sectorSize;
+        chout("Writing FAT to: 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->fat, 1, context->fatSizeBytes, context->file);
+
+        // Write to backup sector
+        pos += backupOffs;
+        chdbg("Writing backup FAT to 0x%x\n", pos);
+        fseek(context->file, pos, SEEK_SET);
+        fwrite(context->fat, 1, context->fatSizeBytes, context->file);
+    }
+
+    fclose(context->file);
+    free(context->bpb);
+    free(context->ebpb);
+    free(context->fat);
+    free(context->fsinfo);
+    free(context);
     *contextP = NULL;
 }
 

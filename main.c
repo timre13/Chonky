@@ -277,6 +277,6 @@ int main(int argc, char** argv)
     if (found) dirIteratorEntryFree(&found);
 #endif
 
-    fat32ContextFree(&cont);
+    fat32ContextCloseAndFree(&cont);
     return 0;
 }
