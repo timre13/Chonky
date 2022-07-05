@@ -863,3 +863,77 @@ DirIteratorEntry* fat32OpenFile(Fat32Context* cont, const char* path)
 {
     return findPath(cont, path, cont->rootDirAddr);
 }
+
+static bool hasLower(const char* str)
+{
+    for (size_t i=0; i < strlen(str); ++i)
+        if (islower(str[i]))
+            return true;
+    return false;
+}
+
+ChError fsRenameVolume(Fat32Context* cont, const char* name)
+{
+    const size_t nameLen = strlen(name);
+    if (nameLen > EBPB_LABEL_LEN)
+    {
+        cherr("New volume label is too long (%i chars), max is %i\n", nameLen, EBPB_LABEL_LEN);
+        return ERROR_INVALID_ARG;
+    }
+    char* nameUpper = strtToUpper(name);
+    if (hasLower(name))
+    {
+        cherr("New volume label is not lowercase: '%s', using uppercase: '%s'\n", name, nameUpper);
+    }
+
+    uint8_t buffer[DIRENTRY_FILENAME_LEN];
+    memset(buffer, ' ', DIRENTRY_FILENAME_LEN); // Write padding
+    memcpy((char*)buffer, nameUpper, strlen(nameUpper)); // Copy string without null terminator
+
+    // Change entry value in root directory
+    {
+        DirIterator* it = dirIteratorNew(cont->rootDirAddr);
+        DirIteratorEntry* labelEntry;
+        while (true)
+        {
+            labelEntry = dirIteratorNext(cont, it);
+            if (!labelEntry)
+                break;
+
+            if (dirEntryIsVolumeLabel(labelEntry->entry))
+                break;
+
+            dirIteratorEntryFree(&labelEntry);
+        }
+        dirIteratorFree(&it);
+
+        if (!labelEntry)
+        {
+            cherr("BUG: Failed to find volume label entry\n");
+            assert(false);
+            abort();
+        }
+
+        chdbg("Volume label entry is at 0x%x\n", labelEntry->address);
+        chdbg("Current volume label entry value: '%.11s'\n", labelEntry->entry->fileName);
+
+        fseek(cont->file, labelEntry->address, SEEK_SET);
+        const size_t written = fwrite(buffer, 1, DIRENTRY_FILENAME_LEN, cont->file);
+        assert(written == DIRENTRY_FILENAME_LEN);
+
+        chdbg("Wrote new volume label entry value: '%.11s' (%i bytes)\n", buffer, written);
+
+        dirIteratorEntryFree(&labelEntry);
+    }
+
+    // Change EBPB value
+    {
+        memcpy(cont->ebpb->label, buffer, DIRENTRY_FILENAME_LEN);
+        cont->isEbpbModified = true;
+
+        chdbg("Copied new volume label to EBPB\n");
+    }
+
+    free(nameUpper);
+    return ERROR_OK;
+}

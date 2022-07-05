@@ -285,4 +285,12 @@ void dirIteratorFree(DirIterator** itP);
 
 //------------------------------------------------------------------------------
 
+typedef enum
+{
+    ERROR_OK,
+    ERROR_INVALID_ARG,
+} ChError;
+
+ChError fsRenameVolume(Fat32Context* cont, const char* name);
+
 #endif // CHONKY_FAT32_H

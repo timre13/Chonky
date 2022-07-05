@@ -98,16 +98,17 @@ int main(int argc, char** argv)
 
         if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0)
         {
-            printf( "help           Print this message\n"
-                    "?              Same as 'help'\n"
-                    "info           Print file system and volume info\n"
-                    "list <path>    List a directory at `path` or the root folder if no argument is given\n"
-                    "print <path>   Show contents of file at `path`\n"
-                    "dump <path>    Show hexdump of file at `path`\n"
-                    "tree           Recursively list all the directories\n"
+            printf( "help                   Print this message\n"
+                    "?                      Same as 'help'\n"
+                    "info                   Print file system and volume info\n"
+                    "list <path>            List a directory at `path` or the root folder if no argument is given\n"
+                    "print <path>           Show contents of file at `path`\n"
+                    "dump <path>            Show hexdump of file at `path`\n"
+                    "tree                   Recursively list all the directories\n"
+                    "setlabel <label>       Set volume label\n"
                     // Add new here
-                    "exit           Exit program\n"
-                    "quit           Same as 'exit'\n"
+                    "exit                   Exit program\n"
+                    "quit                   Same as 'exit'\n"
             );
         }
         else if (strcmp(cmd, "exit") == 0 || strcmp(cmd, "quit") == 0)
@@ -221,6 +222,18 @@ int main(int argc, char** argv)
         else if (strcmp(cmd, "tree") == 0)
         {
             listDirsRecursively(cont, cont->rootDirAddr);
+        }
+        else if (strcmp(cmd, "setlabel") == 0)
+        {
+            const char* arg = input+cmdLen+1;
+            printf("Setting label to: '%s'...\n", arg);
+            if (strlen(arg) == 0)
+            {
+                fprintf(stderr, "Error: Argument required\n");
+                continue;
+            }
+
+            fsRenameVolume(cont, arg);
         }
         else
         {
