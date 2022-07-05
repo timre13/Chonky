@@ -49,6 +49,7 @@ void listDirsRecursively(Fat32Context* cont, uint64_t addr)
     dirIteratorFree(&it);
 }
 
+#if 1
 static char* readCmd()
 {
     printf("\n> ");
@@ -63,6 +64,7 @@ static char* readCmd()
         cmd[len-1] = 0; // Remove newline from the end of line
     return cmd;
 }
+#endif
 
 int main(int argc, char** argv)
 {
@@ -77,10 +79,15 @@ int main(int argc, char** argv)
 
     fat32PrintInfo(cont);
 
+#if 1
     while (true)
     {
         char* input = readCmd();
-        if (!input) return 1;
+        if (!input)
+        {
+            printf("\nNo command, exiting\n");
+            break;
+        }
 
         size_t cmdLen = 0;
         while (input[cmdLen] && !isspace(input[cmdLen]))
@@ -243,6 +250,9 @@ int main(int argc, char** argv)
         free(input);
         free(cmd);
     }
+    printf("\n");
+#endif
+
 
 
 #if 0
