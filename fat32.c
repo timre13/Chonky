@@ -773,34 +773,36 @@ static char* strtToUpper(const char* str)
     const size_t len = strlen(str);
     char* output = malloc(len+1);
     for (size_t i=0; i <= len; ++i)
-        output[i] = str[i];
+        output[i] = toupper(str[i]);
     return output;
 }
 
 DirIteratorEntry* fat32FindInDir(Fat32Context* cont, uint64_t addr, const char* toFind)
 {
     DirIterator* it = dirIteratorNew(addr);
-    char* fileName = strtToUpper(toFind);
+    char* toFindUpper = strtToUpper(toFind);
     while (true)
     {
         DirIteratorEntry* result = dirIteratorNext(cont, it);
         if (result == NULL)
         {
             chdbg("End of dir\n");
-            free(fileName);
+            free(toFindUpper);
             dirIteratorFree(&it);
             return NULL;
         }
 
         char* entryFileName = dirIteratorEntryGetFileName(result);
+        char* entryFileNameUpper = strtToUpper(entryFileName);
         chdbg("Comparing entry (parent: 0x%lx, addr: 0x%lx, name: \"%s\") with: \"%s\" -> ",
-                addr, dirEntryGetDataAddress(cont, result->entry), entryFileName, fileName);
+                addr, dirEntryGetDataAddress(cont, result->entry), entryFileName, toFindUpper);
 
-        if (strcmp(entryFileName, fileName) == 0)
+        if (strcmp(entryFileNameUpper, toFindUpper) == 0)
         {
             chdbg("Match\n");
-            free(fileName);
+            free(toFindUpper);
             free(entryFileName);
+            free(entryFileNameUpper);
             dirIteratorFree(&it);
             return result;
         }
@@ -808,6 +810,7 @@ DirIteratorEntry* fat32FindInDir(Fat32Context* cont, uint64_t addr, const char* 
 
         dirIteratorEntryFree(&result);
         free(entryFileName);
+        free(entryFileNameUpper);
     }
 
     assert(false); // Unreachable
