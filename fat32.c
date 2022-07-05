@@ -682,7 +682,7 @@ void fat32PrintInfo(Fat32Context* cont)
     chout("\n");
 
     chout("----- BPB -----\n");
-    chout("OEM:                    %.*s\n", BPB_OEM_LEN, cont->bpb->oemIdentifier);
+    chout("OEM:                    '%.*s'\n", BPB_OEM_LEN, cont->bpb->oemIdentifier);
     chout("Bytes/sector:           %u\n",   cont->bpb->sectorSize);
     chout("Sectors/cluster:        %u\n",   cont->bpb->sectorsPerClusters);
     chout("Reserved sectors:       %u\n",   cont->bpb->reservedSectorCount);
@@ -707,8 +707,8 @@ void fat32PrintInfo(Fat32Context* cont)
     chout("Signature:              0x%x (%s)\n", cont->ebpb->signature,
             (cont->ebpb->signature == 0x28 || cont->ebpb->signature == 0x29 ? "OK" : "BAD"));
     chout("Serial number:          0x%x\n", cont->ebpb->serialNum);
-    chout("Label:                  %.*s\n", EBPB_LABEL_LEN, cont->ebpb->label);
-    chout("System ID:              %.*s\n", EBPB_SYS_ID_LEN, cont->ebpb->systemId);
+    chout("Label:                  '%.*s'\n", EBPB_LABEL_LEN, cont->ebpb->label);
+    chout("System ID:              '%.*s'\n", EBPB_SYS_ID_LEN, cont->ebpb->systemId);
     chout("\n");
 
     chout("----- FSInfo -----\n");
